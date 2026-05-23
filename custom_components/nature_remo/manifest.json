@@ -1,12 +1,10 @@
 {
   "domain": "nature_remo",
   "name": "Nature Remo",
-  "version": "0.2.3",
+  "version": "0.4.0",
   "config_flow": true,
   "dependencies": [],
-  "requirements": [
-    "aiohttp"
-  ],
+  "requirements": [],
   "codeowners": [
     "@nanosns"
   ],

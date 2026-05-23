@@ -1,10 +1,10 @@
 from datetime import timedelta, datetime
 import logging
+from typing import Any
 
 from aiohttp import ClientError
 
 from homeassistant.core import HomeAssistant
-from homeassistant.components.light import LightEntity
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 
@@ -12,13 +12,8 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class NatureRemoCoordinator(DataUpdateCoordinator):
-    """
-    Nature Remo API からデータを取得するコーディネーター.
-    Coordinator to fetch data from the Nature Remo API.
-    """
 
     def __init__(self, hass: HomeAssistant, api, update_interval: int = 60) -> None:
-        """初期化."""
         super().__init__(
             hass,
             _LOGGER,
@@ -26,55 +21,64 @@ class NatureRemoCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(seconds=update_interval),
         )
         self.api = api
-        self.devices = {}
-        self.aircons = {}
-        self.lights = {}
-        self.ir_remotes = {}
-        self.smart_meters = {}
-        self.motion_sensors = {}  # motionセンサー用の辞書
-        self.entity_map: dict[str, LightEntity] = {}
+        self.devices: dict[str, dict] = {}
+        self.aircons: dict[str, dict] = {}
+        self.lights: dict[str, dict] = {}
+        self.ir_remotes: dict[str, dict] = {}
+        self.smart_meters: dict[str, dict] = {}
+        self.motion_sensors: dict[str, dict] = {}
+        self.echonetlite_appliances: dict[str, dict] = {}
+        self.entity_map: dict[str, Any] = {}
+        self.motion_threshold_minutes: int = 5
 
     async def _async_update_data(self):
-        """APIを1回だけ呼び、各アプライアンスの情報を取得."""
-        _LOGGER.info("NatureRemoCoordinator.async_update_data start.")
+        _LOGGER.debug("NatureRemoCoordinator.async_update_data start.")
         try:
-            # Remoデバイス本体（温湿度センサーなど）の処理
-            self.devices = {}
+            new_devices = {}
+            new_motion_sensors = {}
+
             devices = await self.api.get_devices()
             for device in devices:
                 device_id = device.get("id")
                 name = device.get("name", "Unnamed")
                 newest_events = device.get("newest_events", {})
+                serial_number = device.get("serial_number", "")
+                mac_address = device.get("mac_address", "")
 
-                # モーションセンサー辞書の追加
                 motion_event = newest_events.get("mo")
                 if motion_event:
                     created_at_str = motion_event.get("created_at")
                     if created_at_str:
-                        # UTCのISO8601文字列をdatetime型に変換して保存しておく
                         created_at = datetime.fromisoformat(
                             created_at_str.replace("Z", "+00:00")
                         )
-                        self.motion_sensors[device_id] = {
+                        now = datetime.now(created_at.tzinfo)
+                        is_active = (now - created_at) < timedelta(
+                            minutes=self.motion_threshold_minutes
+                        )
+                        new_motion_sensors[device_id] = {
                             "name": name,
                             "device_id": device_id,
                             "last_motion": created_at,
+                            "is_active": is_active,
                             "firmware_version": device.get("firmware_version", ""),
+                            "serial_number": serial_number,
+                            "mac_address": mac_address,
                         }
 
-                # 温湿度センサー辞書の追加
-                self.devices[device_id] = {
+                new_devices[device_id] = {
                     "name": name,
                     "device_id": device_id,
                     "events": newest_events,
                     "firmware_version": device.get("firmware_version", ""),
+                    "serial_number": serial_number,
+                    "mac_address": mac_address,
                 }
 
-            # 初期化
-            self.aircons = {}
-            self.lights = {}
-            self.smart_meters = {}
-            self.ir_remotes = {}
+            new_aircons = {}
+            new_lights = {}
+            new_smart_meters = {}
+            new_ir_remotes = {}
 
             appliances = await self.api.get_appliances()
 
@@ -88,6 +92,12 @@ class NatureRemoCoordinator(DataUpdateCoordinator):
                     "firmware_version": appliance.get("device", {}).get(
                         "firmware_version", ""
                     ),
+                    "serial_number": appliance.get("device", {}).get(
+                        "serial_number", ""
+                    ),
+                    "mac_address": appliance.get("device", {}).get(
+                        "mac_address", ""
+                    ),
                 }
                 appliance_info = {
                     "name": nickname,
@@ -95,7 +105,6 @@ class NatureRemoCoordinator(DataUpdateCoordinator):
                     "device": device_info,
                 }
 
-                # スマートメーターの処理
                 if appliance_type == "EL_SMART_METER":
                     properties = appliance.get("smart_meter", {}).get(
                         "echonetlite_properties", []
@@ -103,9 +112,13 @@ class NatureRemoCoordinator(DataUpdateCoordinator):
                     parsed = self.api.parse_smart_meter_properties(properties)
 
                     _LOGGER.debug(
-                        f"[{nickname}]buy_power:{parsed["buy_power"]}, sold_power:{parsed["sold_power"]}, current_power:{parsed["instant_power"]}"
+                        "[%s] buy_power: %s, sold_power: %s, current_power: %s",
+                        nickname,
+                        parsed["buy_power"],
+                        parsed["sold_power"],
+                        parsed["instant_power"],
                     )
-                    self.smart_meters[appliance_id] = {
+                    new_smart_meters[appliance_id] = {
                         "name": nickname,
                         "appliance_id": appliance_id,
                         "device": device_info,
@@ -114,46 +127,83 @@ class NatureRemoCoordinator(DataUpdateCoordinator):
                         "current_power": parsed["instant_power"],
                     }
 
-                # エアコン（AC）の処理
                 elif appliance_type == "AC":
-                    self.aircons[appliance_id] = appliance_info
-                    # signalsにボタンが設定されていればリモートエンティティに追加
+                    new_aircons[appliance_id] = appliance_info
                     signals = appliance.get("signals", [])
                     if signals:
-                        self.ir_remotes[appliance_id] = {
+                        new_ir_remotes[appliance_id] = {
                             "name": nickname,
                             "appliance_id": appliance_id,
                             "device": device_info,
                             "signals": signals,
                         }
 
-                # 照明（LIGHT）の処理
                 elif appliance_type == "LIGHT":
-                    self.lights[appliance_id] = appliance_info
-                    # signalsにボタンが設定されていればリモートエンティティに追加
+                    new_lights[appliance_id] = appliance_info
                     signals = appliance.get("signals", [])
                     if signals:
-                        self.ir_remotes[appliance_id] = {
+                        new_ir_remotes[appliance_id] = {
                             "name": nickname,
                             "appliance_id": appliance_id,
                             "device": device_info,
                             "signals": signals,
                         }
 
-                # IRの処理
                 elif appliance_type == "IR":
                     signals = appliance.get("signals", [])
                     if signals:
-                        self.ir_remotes[appliance_id] = {
+                        new_ir_remotes[appliance_id] = {
                             "name": nickname,
                             "appliance_id": appliance_id,
                             "device": device_info,
                             "signals": signals,
                         }
 
+            new_echonetlite = {}
+            try:
+                echonetlite_appliances = await self.api.get_echonetlite_appliances()
+                for appliance in echonetlite_appliances:
+                    el_id = appliance.get("id")
+                    el_nickname = appliance.get("nickname", "Unnamed")
+                    el_type = appliance.get("type", "")
+                    el_device = {
+                        "name": appliance.get("device", {}).get("name", "No Name"),
+                        "device_id": appliance.get("device", {}).get("id", ""),
+                        "firmware_version": appliance.get("device", {}).get(
+                            "firmware_version", ""
+                        ),
+                        "serial_number": appliance.get("device", {}).get(
+                            "serial_number", ""
+                        ),
+                        "mac_address": appliance.get("device", {}).get(
+                            "mac_address", ""
+                        ),
+                    }
+                    properties_raw = appliance.get("echonetlite_properties", [])
+                    parsed_properties = self.api.parse_echonetlite_properties(
+                        properties_raw, el_type
+                    )
+                    new_echonetlite[el_id] = {
+                        "name": el_nickname,
+                        "appliance_id": el_id,
+                        "type": el_type,
+                        "device": el_device,
+                        "properties": parsed_properties,
+                    }
+                self.echonetlite_appliances = new_echonetlite
+            except (ClientError, TimeoutError, ValueError) as err:
+                _LOGGER.warning("ECHONET Lite data fetch skipped: %s", err)
+
+            self.devices = new_devices
+            self.aircons = new_aircons
+            self.lights = new_lights
+            self.smart_meters = new_smart_meters
+            self.ir_remotes = new_ir_remotes
+            self.motion_sensors = new_motion_sensors
+
             return {ac["id"]: ac for ac in appliances}
         except ClientError as err:
-            raise UpdateFailed(f"通信エラー: {err}") from err  # ネットワーク系のエラー
+            raise UpdateFailed(f"通信エラー: {err}") from err
         except TimeoutError as err:
             raise UpdateFailed("APIの応答がタイムアウトしました") from err
         except ValueError as err:

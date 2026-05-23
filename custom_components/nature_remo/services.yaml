@@ -26,3 +26,34 @@ send_light_mode:
             - 'colortemp-up'
             - 'colortemp-down'
           custom_value: true
+
+echonetlite_refresh:
+  name: Nature Remo ECHONET Lite Refresh
+  description: ECHONET Lite 家電のプロパティ値の再取得を要求します / Request a refresh of ECHONET Lite appliance property values.
+  fields:
+    appliance_id:
+      name: アプライアンスID / Appliance ID
+      description: "Nature Remo E に登録されているアプライアンスのID / Appliance ID registered with Nature Remo E"
+      required: true
+      example: "abc123-def456"
+      selector:
+        text:
+    epcs:
+      name: EPCリスト / EPC List
+      description: "取得するEPCのカンマ区切りリスト（例: e2,e7）。省略時は全EPCを再取得 / Comma-separated list of EPCs to refresh (e.g., e2,e7). Omit to refresh all."
+      required: false
+      example: "e2,e7"
+      selector:
+        text:
+
+learn_signal:
+  name: Nature Remo Learn Signal
+  description: 赤外線信号の学習を開始します / Start learning an infrared signal.
+  fields:
+    appliance_id:
+      name: アプライアンスID / Appliance ID
+      description: "信号を学習するアプライアンスのID / Appliance ID to learn a signal for"
+      required: true
+      example: "abc123-def456"
+      selector:
+        text:
