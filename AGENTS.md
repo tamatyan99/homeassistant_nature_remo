@@ -9,3 +9,10 @@ When delegating tasks to subagents via the `Agent` tool:
 - Only block and wait for subagent results when the next step is strictly dependent on their output.
 
 This maximizes parallelism and keeps the session efficient.
+
+## Development Rules
+
+- **Never commit `venv/`** — The virtual environment is local-only and already excluded in `.gitignore`.
+- **Run tests** with `python -m pytest tests/ -v` before committing test-related changes.
+- **Bump `manifest.json` version** on every release to force Home Assistant cache invalidation.
+- **Delete `__pycache__`** in `custom_components/nature_remo/` after major refactors before restarting HA, to avoid stale bytecode errors.

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import aiohttp
 from homeassistant import config_entries
@@ -11,6 +11,13 @@ from homeassistant.data_entry_flow import FlowResultType
 import pytest
 
 from custom_components.nature_remo.const import DOMAIN
+
+
+@pytest.fixture(autouse=True)
+def mock_async_resolver():
+    """Prevent aiodns/pycares from starting a background thread."""
+    with patch("homeassistant.helpers.aiohttp_client.AsyncResolver", return_value=Mock()):
+        yield
 
 
 def _unique_id(api_key: str) -> str:
