@@ -1,5 +1,9 @@
 # Nature Remo - Home Assistant カスタム統合
 
+[![Tests](https://github.com/tamatyan99/homeassistant_nature_remo/actions/workflows/test.yml/badge.svg)](https://github.com/tamatyan99/homeassistant_nature_remo/actions/workflows/test.yml)
+[![HACS Validation](https://github.com/tamatyan99/homeassistant_nature_remo/actions/workflows/hacs.yml/badge.svg)](https://github.com/tamatyan99/homeassistant_nature_remo/actions/workflows/hacs.yml)
+[![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
+
 ⭐ この統合が役に立った場合は、GitHubでスターを付けていただけると嬉しいです。
 
 Nature RemoをHome Assistantに連携するためのカスタムインテグレーションです。  

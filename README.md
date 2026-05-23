@@ -1,5 +1,9 @@
 # Nature Remo - Home Assistant Custom Integration
 
+[![Tests](https://github.com/tamatyan99/homeassistant_nature_remo/actions/workflows/test.yml/badge.svg)](https://github.com/tamatyan99/homeassistant_nature_remo/actions/workflows/test.yml)
+[![HACS Validation](https://github.com/tamatyan99/homeassistant_nature_remo/actions/workflows/hacs.yml/badge.svg)](https://github.com/tamatyan99/homeassistant_nature_remo/actions/workflows/hacs.yml)
+[![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
+
 ⭐ If this integration helps you, please consider giving it a star on GitHub!
 
 📄 日本語版のREADMEはこちら 👉 [README_ja.md](README_ja.md)
