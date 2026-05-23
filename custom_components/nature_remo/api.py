@@ -8,24 +8,6 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 _LOGGER = logging.getLogger(__name__)
 NATURE_REMO_CLOUD_URL = "https://api.nature.global/1"
 
-ECHONET_LITE_EPC_SPECS = {
-    "EL_STORAGE_BATTERY": {
-        "e2": {"bytes": 4, "signed": True, "unit": "W", "divisor": 1},
-        "e7": {"bytes": 1, "signed": False, "unit": "%", "divisor": 1},
-        "cf": {"bytes": 1, "signed": False, "unit": None, "divisor": 1},
-    },
-    "EL_SOLAR_POWER": {
-        "e3": {"bytes": 4, "signed": True, "unit": "W", "divisor": 1},
-        "e4": {"bytes": 4, "signed": False, "unit": "kWh", "divisor": 1000},
-    },
-    "EL_EVCD": {
-        "e2": {"bytes": 4, "signed": True, "unit": "W", "divisor": 1},
-    },
-    "EL_ELECTRIC_WATER_HEATER": {
-        "e2": {"bytes": 4, "signed": True, "unit": "W", "divisor": 1},
-    },
-}
-
 
 class NatureRemoAPI:
 
@@ -91,9 +73,6 @@ class NatureRemoAPI:
 
     async def get_devices(self):
         return await self._get("/devices")
-
-    async def get_echonetlite_appliances(self):
-        return await self._get("/echonetlite/appliances")
 
     async def send_command_climate(self, payload, appliance_id):
         _LOGGER.info("Setting payload: %s", payload)
@@ -237,47 +216,6 @@ class NatureRemoAPI:
             "sold_power": sold_power,
             "instant_power": instant_power,
         }
-
-    @staticmethod
-    def parse_echonetlite_value(val_hex: str, byte_count: int, signed: bool) -> int:
-        try:
-            raw = int(val_hex, 16)
-        except (ValueError, TypeError):
-            return 0
-        if signed:
-            mask = 1 << (byte_count * 8 - 1)
-            if raw & mask:
-                raw = raw - (1 << (byte_count * 8))
-        return raw
-
-    def parse_echonetlite_properties(
-        self, properties: list[dict], appliance_type: str
-    ) -> dict:
-        specs = ECHONET_LITE_EPC_SPECS.get(appliance_type, {})
-        result = {}
-        for prop in properties:
-            epc_hex = prop.get("epc", "").lower()
-            val_hex = prop.get("val", "")
-            updated_at = prop.get("updated_at")
-
-            spec = specs.get(epc_hex)
-            if spec is None:
-                continue
-
-            try:
-                parsed = self.parse_echonetlite_value(
-                    val_hex, spec["bytes"], spec["signed"]
-                )
-                final_val = parsed / spec["divisor"]
-            except (ValueError, TypeError):
-                final_val = None
-
-            result[epc_hex] = {
-                "raw_val": val_hex,
-                "parsed_val": final_val,
-                "updated_at": updated_at,
-            }
-        return result
 
     async def send_command_signal(self, signal_id: str) -> None:
         api_url = f"{NATURE_REMO_CLOUD_URL}/signals/{signal_id}/send"

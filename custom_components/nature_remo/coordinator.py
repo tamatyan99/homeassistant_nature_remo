@@ -27,7 +27,6 @@ class NatureRemoCoordinator(DataUpdateCoordinator):
         self.ir_remotes: dict[str, dict] = {}
         self.smart_meters: dict[str, dict] = {}
         self.motion_sensors: dict[str, dict] = {}
-        self.echonetlite_appliances: dict[str, dict] = {}
         self.entity_map: dict[str, Any] = {}
         self.motion_threshold_minutes: int = 5
 
@@ -168,49 +167,6 @@ class NatureRemoCoordinator(DataUpdateCoordinator):
                             "device": device_info,
                             "signals": signals,
                         }
-
-            new_echonetlite = {}
-            try:
-                echonetlite_appliances = await self.api.get_echonetlite_appliances()
-                if not isinstance(echonetlite_appliances, list):
-                    _LOGGER.error(
-                        "Unexpected ECHONET Lite response type: %s",
-                        type(echonetlite_appliances),
-                    )
-                    raise UpdateFailed(
-                        "Unexpected ECHONET Lite response from API"
-                    )
-                for appliance in echonetlite_appliances:
-                    el_id = appliance.get("id")
-                    el_nickname = appliance.get("nickname", "Unnamed")
-                    el_type = appliance.get("type", "")
-                    el_device = {
-                        "name": appliance.get("device", {}).get("name", "No Name"),
-                        "device_id": appliance.get("device", {}).get("id", ""),
-                        "firmware_version": appliance.get("device", {}).get(
-                            "firmware_version", ""
-                        ),
-                        "serial_number": appliance.get("device", {}).get(
-                            "serial_number", ""
-                        ),
-                        "mac_address": appliance.get("device", {}).get(
-                            "mac_address", ""
-                        ),
-                    }
-                    properties_raw = appliance.get("echonetlite_properties", [])
-                    parsed_properties = self.api.parse_echonetlite_properties(
-                        properties_raw, el_type
-                    )
-                    new_echonetlite[el_id] = {
-                        "name": el_nickname,
-                        "appliance_id": el_id,
-                        "type": el_type,
-                        "device": el_device,
-                        "properties": parsed_properties,
-                    }
-                self.echonetlite_appliances = new_echonetlite
-            except (ClientError, TimeoutError, ValueError) as err:
-                _LOGGER.warning("ECHONET Lite data fetch skipped: %s", err)
 
             self.devices = new_devices
             self.aircons = new_aircons

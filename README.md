@@ -28,7 +28,6 @@ Please use this integration **at your own risk**.
 - Send IR commands using remote entities created from defined signals
 - Switch entities for appliances with on/off signals
 - Binary motion sensor with configurable detection threshold
-- ECHONET Lite appliance support (storage battery, solar power, EV charger, electric water heater)
 - External temperature and humidity sensor override for climate entities
 - Local API support for data retrieval (read-only; control commands always use the cloud API)
 
@@ -152,7 +151,6 @@ The integration provides the following custom services under the `nature_remo` d
 | Service                | Description                                    |
 |------------------------|------------------------------------------------|
 | `send_light_mode`      | Send a specific mode command to a light entity |
-| `echonetlite_refresh`  | Refresh ECHONET Lite appliance properties      |
 | `learn_signal`         | Start learning an infrared signal              |
 
 ---

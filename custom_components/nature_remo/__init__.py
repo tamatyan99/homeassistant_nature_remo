@@ -54,21 +54,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         return {"status": "success", "appliance_id": light_entity.appliance_id}
 
-    async def handle_echonetlite_refresh(call: ServiceCall):
-        appliance_id = call.data.get("appliance_id")
-        epcs = call.data.get("epcs")
-
-        if not appliance_id:
-            raise ServiceValidationError("appliance_id is required")
-
-        if epcs and isinstance(epcs, str):
-            epcs = [e.strip() for e in epcs.split(",")]
-
-        result = await api.send_echonetlite_refresh(appliance_id, epcs)
-
-        await coordinator.async_request_refresh()
-        return result
-
     async def handle_learn_signal(call: ServiceCall):
         appliance_id = call.data.get("appliance_id")
 
@@ -83,14 +68,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             DOMAIN,
             "send_light_mode",
             handle_send_light_mode,
-            supports_response=SupportsResponse.OPTIONAL,
-        )
-
-    if not hass.services.has_service(DOMAIN, "echonetlite_refresh"):
-        hass.services.async_register(
-            DOMAIN,
-            "echonetlite_refresh",
-            handle_echonetlite_refresh,
             supports_response=SupportsResponse.OPTIONAL,
         )
 
@@ -112,7 +89,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data[DOMAIN].pop(entry.entry_id, None)
         if not hass.data[DOMAIN]:
             hass.services.async_remove(DOMAIN, "send_light_mode")
-            hass.services.async_remove(DOMAIN, "echonetlite_refresh")
             hass.services.async_remove(DOMAIN, "learn_signal")
             hass.data.pop(DOMAIN, None)
     return unload_ok
