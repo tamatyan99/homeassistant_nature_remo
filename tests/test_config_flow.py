@@ -13,13 +13,6 @@ import pytest
 from custom_components.nature_remo.const import DOMAIN
 
 
-@pytest.fixture(autouse=True)
-def mock_async_resolver():
-    """Prevent aiodns/pycares from starting a background thread."""
-    with patch("homeassistant.helpers.aiohttp_client.AsyncResolver", return_value=Mock()):
-        yield
-
-
 def _unique_id(api_key: str) -> str:
     """Compute the unique_id used by the config flow."""
     return hashlib.sha256(api_key.encode()).hexdigest()[:32]

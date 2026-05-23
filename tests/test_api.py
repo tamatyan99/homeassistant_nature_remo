@@ -27,27 +27,27 @@ def _mock_session_method(mock_resp):
 @pytest.fixture
 async def api():
     mock_hass = MagicMock()
-    async with aiohttp.ClientSession() as session:
-        mock_hass.data = {}
-        with pytest.MonkeyPatch().context() as mp:
-            mp.setattr(
-                "custom_components.nature_remo.api.async_get_clientsession",
-                lambda hass: session,
-            )
-            yield NatureRemoAPI(mock_hass, "test-token")
+    mock_hass.data = {}
+    mock_session = MagicMock()
+    with pytest.MonkeyPatch().context() as mp:
+        mp.setattr(
+            "custom_components.nature_remo.api.async_get_clientsession",
+            lambda hass: mock_session,
+        )
+        yield NatureRemoAPI(mock_hass, "test-token")
 
 
 @pytest.fixture
 async def api_with_local_ip():
     mock_hass = MagicMock()
-    async with aiohttp.ClientSession() as session:
-        mock_hass.data = {}
-        with pytest.MonkeyPatch().context() as mp:
-            mp.setattr(
-                "custom_components.nature_remo.api.async_get_clientsession",
-                lambda hass: session,
-            )
-            yield NatureRemoAPI(mock_hass, "test-token", local_ip="192.168.1.100")
+    mock_hass.data = {}
+    mock_session = MagicMock()
+    with pytest.MonkeyPatch().context() as mp:
+        mp.setattr(
+            "custom_components.nature_remo.api.async_get_clientsession",
+            lambda hass: mock_session,
+        )
+        yield NatureRemoAPI(mock_hass, "test-token", local_ip="192.168.1.100")
 
 
 class TestNatureRemoAPI:
