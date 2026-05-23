@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from homeassistant.components.remote import RemoteEntity
+from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
@@ -30,17 +30,24 @@ async def async_setup_entry(
     ]
     api: NatureRemoAPI = hass.data[DOMAIN][entry.entry_id]["api"]
 
-    entities = [
-        NatureRemoRemoteEntity(
-            coordinator=coordinator, api=api, remote_info=remote_info
-        )
-        for remote_info in coordinator.ir_remotes.values()
-    ]
+    entities = []
+    for remote_info in coordinator.ir_remotes.values():
+        commands = {s["name"].lower(): s["id"] for s in remote_info["signals"]}
+        has_on = any(c in commands for c in ON_COMMANDS)
+        has_off = any(c in commands for c in OFF_COMMANDS)
+        if has_on or has_off:
+            entities.append(
+                NatureRemoSwitchEntity(
+                    coordinator=coordinator, api=api, remote_info=remote_info
+                )
+            )
 
     async_add_entities(entities)
 
 
-class NatureRemoRemoteEntity(CoordinatorEntity[NatureRemoCoordinator], RemoteEntity):
+class NatureRemoSwitchEntity(CoordinatorEntity[NatureRemoCoordinator], SwitchEntity):
+
+    _attr_icon = "mdi:remote"
 
     def __init__(
         self,
@@ -49,15 +56,13 @@ class NatureRemoRemoteEntity(CoordinatorEntity[NatureRemoCoordinator], RemoteEnt
         remote_info: dict[str, Any],
     ) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = f"nature_remo_remote_{remote_info['appliance_id']}"
+        self._attr_unique_id = f"nature_remo_switch_{remote_info['appliance_id']}"
         self._attr_name = f"Nature Remo {remote_info['name']}"
         self._api = api
         self._device = remote_info["device"]
         self._appliance_id = remote_info["appliance_id"]
-        self._remote_info = remote_info
+        self._is_on = False
         self._commands = {s["name"].lower(): s["id"] for s in remote_info["signals"]}
-
-        self._attr_state = "off"
         self._power_on_id = next(
             (self._commands[c] for c in ON_COMMANDS if c in self._commands), None
         )
@@ -80,71 +85,41 @@ class NatureRemoRemoteEntity(CoordinatorEntity[NatureRemoCoordinator], RemoteEnt
         return di
 
     @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        return {
-            "available_commands": list(self._commands.keys()),
-            "command": self._attr_state,
-        }
-
-    @property
     def available(self) -> bool:
-        return super().available and bool(self._commands)
+        return self.coordinator.last_update_success
 
     @property
-    def state(self) -> str | None:
-        return self._attr_state
-
-    async def async_send_command(self, command: str | list[str], **kwargs: Any) -> None:
-        if isinstance(command, str):
-            command = [command]
-
-        for cmd in command:
-            normalized_cmd = cmd.lower()
-            signal_id = self._commands.get(normalized_cmd)
-            if not signal_id:
-                _LOGGER.warning("Unknown command: %s", cmd)
-                continue
-
-            try:
-                await self._api.send_command_signal(signal_id)
-            except Exception:
-                _LOGGER.error("Failed to send command: %s", cmd)
-                continue
-
-            if normalized_cmd in ON_COMMANDS:
-                self._attr_state = "on"
-            elif normalized_cmd in OFF_COMMANDS:
-                self._attr_state = "off"
-            else:
-                self._attr_state = cmd
-            self.async_write_ha_state()
+    def is_on(self) -> bool:
+        return self._is_on
 
     async def async_turn_on(self) -> None:
         if self._power_on_id:
             try:
                 await self._api.send_command_signal(self._power_on_id)
-                self._attr_state = "on"
+                self._is_on = True
                 self.async_write_ha_state()
             except Exception:
                 _LOGGER.error("Failed to send power ON command")
                 raise HomeAssistantError(
-                    f"Power ON command failed for {self.name}"
+                    "Power ON command failed for %s" % self.name
                 )
         else:
-            raise HomeAssistantError(f"Power ON command not available for {self.name}")
+            raise HomeAssistantError(
+                "Power ON command not available for %s" % self.name
+            )
 
     async def async_turn_off(self) -> None:
         if self._power_off_id:
             try:
                 await self._api.send_command_signal(self._power_off_id)
-                self._attr_state = "off"
+                self._is_on = False
                 self.async_write_ha_state()
             except Exception:
                 _LOGGER.error("Failed to send power OFF command")
                 raise HomeAssistantError(
-                    f"Power OFF command failed for {self.name}"
+                    "Power OFF command failed for %s" % self.name
                 )
         else:
             raise HomeAssistantError(
-                f"Power OFF command not available for {self.name}"
+                "Power OFF command not available for %s" % self.name
             )
