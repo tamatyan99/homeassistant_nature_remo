@@ -6,6 +6,7 @@ from homeassistant.components.climate import (
     ClimateEntityFeature,
     HVACMode,
 )
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
@@ -13,17 +14,20 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .coordinator import NatureRemoCoordinator
-from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-MODE_MAP = {
-    HVACMode.COOL: "cool",
-    HVACMode.HEAT: "warm",
-    HVACMode.DRY: "dry",
-    HVACMode.FAN_ONLY: "blow",
-    HVACMode.AUTO: "auto",
+from .const import DOMAIN, MODE_MAP
+
+MODE_MAP_HA = {
+    HVACMode.COOL: MODE_MAP["cool"],
+    HVACMode.HEAT: MODE_MAP["warm"],
+    HVACMode.DRY: MODE_MAP["dry"],
+    HVACMode.FAN_ONLY: MODE_MAP["blow"],
+    HVACMode.AUTO: MODE_MAP["auto"],
 }
+
+REVERSE_MODE_MAP = {v: k for k, v in MODE_MAP_HA.items()}
 
 
 async def async_setup_entry(
@@ -120,7 +124,7 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         if preset_mode == "eco":
-            operation_mode = MODE_MAP.get(self._hvac_mode)
+            operation_mode = MODE_MAP_HA.get(self._hvac_mode)
             if operation_mode is None:
                 return
             payload = {"operation_mode": operation_mode, "temperature": "26"}
@@ -136,7 +140,7 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
 
     @property
     def target_temperature_step(self) -> float:
-        remo_mode = MODE_MAP.get(self._hvac_mode)
+        remo_mode = MODE_MAP_HA.get(self._hvac_mode)
         temp_list = self._aircon_range_modes.get(remo_mode, {}).get("temp", [])
         temp_list = list(map(float, filter(None, temp_list)))
 
@@ -154,7 +158,7 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
 
     @property
     def min_temp(self):
-        remo_mode = MODE_MAP.get(self._hvac_mode)
+        remo_mode = MODE_MAP_HA.get(self._hvac_mode)
         temp_list = self._aircon_range_modes.get(remo_mode, {}).get("temp", [])
         temp_list = list(map(float, filter(None, temp_list)))
         if not temp_list:
@@ -163,7 +167,7 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
 
     @property
     def max_temp(self):
-        remo_mode = MODE_MAP.get(self._hvac_mode)
+        remo_mode = MODE_MAP_HA.get(self._hvac_mode)
         temp_list = self._aircon_range_modes.get(remo_mode, {}).get("temp", [])
         temp_list = list(map(float, filter(None, temp_list)))
         if not temp_list:
@@ -194,12 +198,12 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
 
     @property
     def fan_modes(self) -> list[str] | None:
-        remo_mode = MODE_MAP.get(self._hvac_mode)
+        remo_mode = MODE_MAP_HA.get(self._hvac_mode)
         return self._aircon_range_modes.get(remo_mode, {}).get("vol", [])
 
     @property
     def swing_modes(self) -> list[str] | None:
-        remo_mode = MODE_MAP.get(self._hvac_mode)
+        remo_mode = MODE_MAP_HA.get(self._hvac_mode)
         return self._aircon_range_modes.get(remo_mode, {}).get("dir", [])
 
     @property
@@ -269,6 +273,9 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
     @callback
     def _handle_coordinator_update(self) -> None:
         _LOGGER.debug("[%s] Start _handle_coordinator_update.", self._attr_name)
+        if self.coordinator.data is None:
+            _LOGGER.debug("[%s] Coordinator data is None, skipping update.", self._attr_name)
+            return
         appliance = self.coordinator.data.get(self._appliance_id, {})
 
         external_temperature = self._get_external_sensor_value("temperature")
@@ -318,25 +325,22 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
             )
             if self._aircon_range_modes:
                 set_range_modes = [HVACMode.OFF]
-                if self._aircon_range_modes.get("cool", {}):
+                if self._aircon_range_modes.get(MODE_MAP["cool"], {}):
                     set_range_modes.append(HVACMode.COOL)
-                if self._aircon_range_modes.get("dry", {}):
+                if self._aircon_range_modes.get(MODE_MAP["dry"], {}):
                     set_range_modes.append(HVACMode.DRY)
-                if self._aircon_range_modes.get("warm", {}):
+                if self._aircon_range_modes.get(MODE_MAP["warm"], {}):
                     set_range_modes.append(HVACMode.HEAT)
-                if self._aircon_range_modes.get("blow", {}):
+                if self._aircon_range_modes.get(MODE_MAP["blow"], {}):
                     set_range_modes.append(HVACMode.FAN_ONLY)
-                if self._aircon_range_modes.get("auto", {}):
+                if self._aircon_range_modes.get(MODE_MAP["auto"], {}):
                     set_range_modes.append(HVACMode.AUTO)
                 self._hvac_modes = set_range_modes
 
         self.async_write_ha_state()
 
     def get_remo_mode_to_hvac_mode(self, remo_mode) -> HVACMode | None:
-        return next(
-            (key for key, value in MODE_MAP.items() if value == remo_mode),
-            None,
-        )
+        return REVERSE_MODE_MAP.get(remo_mode)
 
     def _get_external_sensor_entity_ids(self) -> list[str]:
         if self.hass is None or self._entry_id is None:
@@ -434,7 +438,7 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
             _LOGGER.warning("温度が指定されていません！")
             return
 
-        operation_mode = MODE_MAP.get(self._hvac_mode)
+        operation_mode = MODE_MAP_HA.get(self._hvac_mode)
         if operation_mode is None:
             _LOGGER.error("Invalid HVAC mode: %s", self._hvac_mode)
             return
@@ -463,7 +467,7 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
             return str(value)
 
     async def async_set_fan_mode(self, fan_mode: str) -> None:
-        operation_mode = MODE_MAP.get(self._hvac_mode)
+        operation_mode = MODE_MAP_HA.get(self._hvac_mode)
         if operation_mode is None:
             _LOGGER.error("Invalid HVAC mode: %s", self._hvac_mode)
             return
@@ -483,7 +487,7 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
         self.async_write_ha_state()
 
     async def async_set_swing_mode(self, swing_mode: str) -> None:
-        operation_mode = MODE_MAP.get(self._hvac_mode)
+        operation_mode = MODE_MAP_HA.get(self._hvac_mode)
         if operation_mode is None:
             _LOGGER.error("Invalid HVAC mode: %s", self._hvac_mode)
             return

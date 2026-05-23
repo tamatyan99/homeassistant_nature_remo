@@ -118,8 +118,8 @@ class NatureRemoLight(LightEntity):
         if appliance and "light" in appliance:
             _LOGGER.debug("Nature Remo Settings: %s", appliance["light"])
 
-            state = appliance["light"]["state"]
-            self._is_on = state["power"] == "on"
+            state = appliance["light"].get("state", {})
+            self._is_on = state.get("power") == "on"
             self._last_mode = state.get("last_button", "on")
 
             effect_buttons = appliance["light"].get("buttons", [])

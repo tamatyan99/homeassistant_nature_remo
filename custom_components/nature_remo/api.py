@@ -119,33 +119,6 @@ class NatureRemoAPI:
             )
             raise ClientError(f"Light command failed: {response.status}")
 
-    async def send_echonetlite_refresh(
-        self, appliance_id: str, epcs: list[str] | None = None
-    ) -> dict:
-        api_url = f"{NATURE_REMO_CLOUD_URL}/echonetlite/appliances/{appliance_id}/refresh"
-        headers = {"Authorization": f"Bearer {self._token}"}
-        data = {}
-        if epcs:
-            data["epc"] = ",".join(epcs)
-
-        async with self._session.post(
-            api_url, headers=headers, data=data
-        ) as response:
-            self._log_rate_limits(response)
-
-            if response.status == 202:
-                _LOGGER.info("EPC refresh request accepted: %s", appliance_id)
-                return {"status": "accepted", "appliance_id": appliance_id}
-
-            text = await response.text()
-            _LOGGER.error(
-                "EPC refresh failed for %s: %s - %s",
-                appliance_id,
-                response.status,
-                text,
-            )
-            raise ClientError(f"EPC refresh failed: {response.status}")
-
     async def learn_signal(self, appliance_id: str) -> dict:
         api_url = f"{NATURE_REMO_CLOUD_URL}/appliances/{appliance_id}/IR"
         headers = {"Authorization": f"Bearer {self._token}"}

@@ -8,18 +8,20 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
+from .const import DOMAIN, MODE_MAP
 from .coordinator import NatureRemoCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-MODE_MAP = {
-    HVACMode.COOL: "cool",
-    HVACMode.HEAT: "warm",
-    HVACMode.DRY: "dry",
-    HVACMode.FAN_ONLY: "blow",
-    HVACMode.AUTO: "auto",
+MODE_MAP_HA = {
+    HVACMode.COOL: MODE_MAP["cool"],
+    HVACMode.HEAT: MODE_MAP["warm"],
+    HVACMode.DRY: MODE_MAP["dry"],
+    HVACMode.FAN_ONLY: MODE_MAP["blow"],
+    HVACMode.AUTO: MODE_MAP["auto"],
 }
+
+REVERSE_MODE_MAP = {v: k for k, v in MODE_MAP_HA.items()}
 
 
 async def async_setup_entry(
@@ -150,17 +152,14 @@ class NatureRemoAcPresetSelect(CoordinatorEntity[NatureRemoCoordinator], SelectE
         appliance = self.coordinator.data.get(self._appliance_id, {})
         if appliance and "settings" in appliance:
             remo_mode = appliance["settings"].get("mode", "")
-            hvac_mode = next(
-                (key for key, value in MODE_MAP.items() if value == remo_mode),
-                None,
-            )
+            hvac_mode = REVERSE_MODE_MAP.get(remo_mode)
             if hvac_mode is not None:
                 self._hvac_mode = hvac_mode
         self.async_write_ha_state()
 
     async def async_select_option(self, option: str) -> None:
         if option == "eco":
-            operation_mode = MODE_MAP.get(self._hvac_mode)
+            operation_mode = MODE_MAP_HA.get(self._hvac_mode)
             if operation_mode is None:
                 return
             payload = {"operation_mode": operation_mode, "temperature": "26"}

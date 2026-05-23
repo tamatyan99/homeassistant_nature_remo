@@ -53,22 +53,31 @@ class NatureRemoCoordinator(DataUpdateCoordinator):
                 if motion_event:
                     created_at_str = motion_event.get("created_at")
                     if created_at_str:
-                        created_at = datetime.fromisoformat(
-                            created_at_str.replace("Z", "+00:00")
-                        )
-                        now = datetime.now(created_at.tzinfo)
-                        is_active = (now - created_at) < timedelta(
-                            minutes=self.motion_threshold_minutes
-                        )
-                        new_motion_sensors[device_id] = {
-                            "name": name,
-                            "device_id": device_id,
-                            "last_motion": created_at,
-                            "is_active": is_active,
-                            "firmware_version": device.get("firmware_version", ""),
-                            "serial_number": serial_number,
-                            "mac_address": mac_address,
-                        }
+                        try:
+                            created_at = datetime.fromisoformat(
+                                created_at_str.replace("Z", "+00:00")
+                            )
+                        except ValueError:
+                            _LOGGER.warning(
+                                "Invalid motion timestamp for device %s: %s",
+                                device_id,
+                                created_at_str,
+                            )
+                            created_at = None
+                        if created_at is not None:
+                            now = datetime.now(created_at.tzinfo)
+                            is_active = (now - created_at) < timedelta(
+                                minutes=self.motion_threshold_minutes
+                            )
+                            new_motion_sensors[device_id] = {
+                                "name": name,
+                                "device_id": device_id,
+                                "last_motion": created_at,
+                                "is_active": is_active,
+                                "firmware_version": device.get("firmware_version", ""),
+                                "serial_number": serial_number,
+                                "mac_address": mac_address,
+                            }
 
                 new_devices[device_id] = {
                     "name": name,
