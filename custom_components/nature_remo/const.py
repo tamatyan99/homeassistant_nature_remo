@@ -9,3 +9,6 @@ MODE_MAP = {
     "blow": "blow",
     "auto": "auto",
 }
+
+ON_COMMANDS = ["on", "オン"]
+OFF_COMMANDS = ["off", "オフ"]

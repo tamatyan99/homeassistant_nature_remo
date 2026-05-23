@@ -12,13 +12,10 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api import NatureRemoAPI
-from .const import DOMAIN
+from .const import DOMAIN, OFF_COMMANDS, ON_COMMANDS
 from .coordinator import NatureRemoCoordinator
 
 _LOGGER = logging.getLogger(__name__)
-
-ON_COMMANDS = ["on", "オン"]
-OFF_COMMANDS = ["off", "オフ"]
 
 
 async def async_setup_entry(
