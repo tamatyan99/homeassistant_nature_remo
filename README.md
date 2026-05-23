@@ -95,6 +95,10 @@ Setting a very short update interval may cause the integration to reach the API 
 | remote        | Send infrared signals or turn on/off for IR/AC/LIGHT types        |
 | switch        | On/off toggle for appliances with power signals                    |
 | binary_sensor | Motion detection with configurable timeout                         |
+| event         | Motion detected events for automations                             |
+| button        | Learn IR signal, refresh data                                      |
+| select        | Light mode and AC preset selectors                                 |
+| diagnostics   | Download diagnostic information                                    |
 
 *Additional entities may be supported in future updates.*
 
