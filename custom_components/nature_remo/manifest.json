@@ -9,6 +9,7 @@
     "@nanosns",
     "@tamatyan99"
   ],
+  "homeassistant": "2023.1.0",
   "iot_class": "cloud_polling",
   "documentation": "https://github.com/tamatyan99/homeassistant_nature_remo#readme",
   "issue_tracker": "https://github.com/tamatyan99/homeassistant_nature_remo/issues"

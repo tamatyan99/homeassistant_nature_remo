@@ -30,7 +30,7 @@ Please use this integration **at your own risk**.
 - Binary motion sensor with configurable detection threshold
 - ECHONET Lite appliance support (storage battery, solar power, EV charger, electric water heater)
 - External temperature and humidity sensor override for climate entities
-- Local API support for direct device communication
+- Local API support for data retrieval (read-only; control commands always use the cloud API)
 
 ---
 
@@ -74,10 +74,10 @@ Click the button below to easily add this repository to HACS.
 
 ## Options
 
-- You can set the update interval (in seconds)
-  - Default: `60 seconds`
-- You can set the motion detection threshold (in minutes)
-  - Default: `5 minutes`
+- You can select the update interval from preset choices (seconds)
+  - Choices: `30`, `60`, `90` (default: `60`)
+- You can select the motion detection threshold from preset choices (minutes)
+  - Choices: `1`, `3`, `5`, `10`, `15` (default: `5`)
 - You can configure a local IP address to communicate directly with your Nature Remo device
 - You can assign external temperature and humidity sensors per device
 
@@ -90,10 +90,10 @@ Setting a very short update interval may cause the integration to reach the API 
 
 | Type          | Description                                                        |
 |---------------|--------------------------------------------------------------------|
-| climate       | Control air conditioners (cooling, heating, dry, fan-only, auto)   |
+| climate       | Control air conditioners (cooling, heating, dry, fan-only, auto, eco preset) |
 | light         | Control lights (on/off, mode selection, effects)                   |
-| sensor        | Temperature, humidity, illuminance, pressure, power (buy/sell)    |
-| remote        | Send infrared signals defined as "signals" for IR/AC/LIGHT types  |
+| sensor        | Temperature, humidity, illuminance, pressure, power (buy/sell/instant), motion timestamp |
+| remote        | Send infrared signals or turn on/off for IR/AC/LIGHT types        |
 | switch        | On/off toggle for appliances with power signals                    |
 | binary_sensor | Motion detection with configurable timeout                         |
 
@@ -135,7 +135,8 @@ By selecting entities from Home Assistant settings, the climate device will use 
 Once configured, the selected external sensors will be used for:
 
 - Displaying temperature and humidity in the climate entity
-- Providing more accurate environmental data for air conditioner control
+
+Note: These values are used for display only. Climate control commands are still sent to the Nature Remo API using the device's own readings.
 
 ### Notes
 
