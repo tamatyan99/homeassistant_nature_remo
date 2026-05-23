@@ -38,6 +38,11 @@ class NatureRemoCoordinator(DataUpdateCoordinator):
             new_motion_sensors = {}
 
             devices = await self.api.get_devices()
+            if not isinstance(devices, list):
+                _LOGGER.error(
+                    "Unexpected devices response type: %s", type(devices)
+                )
+                raise UpdateFailed("Unexpected devices response from API")
             for device in devices:
                 device_id = device.get("id")
                 name = device.get("name", "Unnamed")
@@ -81,6 +86,11 @@ class NatureRemoCoordinator(DataUpdateCoordinator):
             new_ir_remotes = {}
 
             appliances = await self.api.get_appliances()
+            if not isinstance(appliances, list):
+                _LOGGER.error(
+                    "Unexpected appliances response type: %s", type(appliances)
+                )
+                raise UpdateFailed("Unexpected appliances response from API")
 
             for appliance in appliances:
                 appliance_type = appliance.get("type")
@@ -162,6 +172,14 @@ class NatureRemoCoordinator(DataUpdateCoordinator):
             new_echonetlite = {}
             try:
                 echonetlite_appliances = await self.api.get_echonetlite_appliances()
+                if not isinstance(echonetlite_appliances, list):
+                    _LOGGER.error(
+                        "Unexpected ECHONET Lite response type: %s",
+                        type(echonetlite_appliances),
+                    )
+                    raise UpdateFailed(
+                        "Unexpected ECHONET Lite response from API"
+                    )
                 for appliance in echonetlite_appliances:
                     el_id = appliance.get("id")
                     el_nickname = appliance.get("nickname", "Unnamed")

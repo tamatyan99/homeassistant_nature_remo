@@ -44,7 +44,12 @@ class NatureRemoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             try:
                 api = NatureRemoAPI(self.hass, self.api_key)
-                await api.get_devices()
+                devices = await api.get_devices()
+                if not isinstance(devices, list):
+                    _LOGGER.error(
+                        "Unexpected devices response type: %s", type(devices)
+                    )
+                    raise ValueError("Unexpected devices response type")
             except (ClientError, TimeoutError, ValueError):
                 errors["base"] = "invalid_auth"
             else:

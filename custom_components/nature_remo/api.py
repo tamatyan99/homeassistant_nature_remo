@@ -70,7 +70,16 @@ class NatureRemoAPI:
             self._log_rate_limits(response)
 
             if response.status == 200:
-                return await response.json()
+                data = await response.json()
+                if not isinstance(data, (list, dict)):
+                    _LOGGER.error(
+                        "Unexpected response type from API: %s (expected list or dict)",
+                        type(data),
+                    )
+                    raise ValueError(
+                        f"Unexpected API response type: {type(data)}"
+                    )
+                return data
 
             _LOGGER.error("Failed to fetch request: %s", response.status)
             raise ClientError(
