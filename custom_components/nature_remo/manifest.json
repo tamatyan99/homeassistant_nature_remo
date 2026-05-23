@@ -6,9 +6,10 @@
   "dependencies": [],
   "requirements": [],
   "codeowners": [
-    "@nanosns"
+    "@nanosns",
+    "@tamatyan99"
   ],
   "iot_class": "cloud_polling",
-  "documentation": "https://github.com/NaNaLinks/homeassistant_nature_remo#readme",
-  "issue_tracker": "https://github.com/NaNaLinks/homeassistant_nature_remo/issues"
+  "documentation": "https://github.com/tamatyan99/homeassistant_nature_remo#readme",
+  "issue_tracker": "https://github.com/tamatyan99/homeassistant_nature_remo/issues"
 }

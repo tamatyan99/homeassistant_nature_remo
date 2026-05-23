@@ -7,9 +7,13 @@
 This is a custom integration for linking Nature Remo devices with Home Assistant.  
 It enables you to control appliances like air conditioners and lights, and monitor temperature, humidity, and more directly in your smart home setup.
 
+This repository is a fork of [NaNaLinks/homeassistant_nature_remo](https://github.com/NaNaLinks/homeassistant_nature_remo) originally developed by [@nanosns](https://github.com/nanosns).  
+We appreciate the original author's work and continue development independently here.
+
 ---
 
 ## ⚠️ Disclaimer
+
 This is an **unofficial** integration and is not affiliated with Nature Inc. or Home Assistant.  
 Please use this integration **at your own risk**.
 
@@ -18,10 +22,15 @@ Please use this integration **at your own risk**.
 ## Features
 
 - Control appliances (air conditioners, lights) registered to Nature Remo
-- Retrieve temperature, humidity, illuminance, and motion sensor data
+- Retrieve temperature, humidity, illuminance, atmospheric pressure, and motion sensor data
 - Access smart meter data (consumption, generation, instant power) via Nature Remo E / E Lite
 - Control lighting modes using custom service calls
 - Send IR commands using remote entities created from defined signals
+- Switch entities for appliances with on/off signals
+- Binary motion sensor with configurable detection threshold
+- ECHONET Lite appliance support (storage battery, solar power, EV charger, electric water heater)
+- External temperature and humidity sensor override for climate entities
+- Local API support for direct device communication
 
 ---
 
@@ -29,13 +38,13 @@ Please use this integration **at your own risk**.
 
 Click the button below to easily add this repository to HACS.
 
-[![Open your Home Assistant instance and open the repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=NaNaLinks&repository=homeassistant_nature_remo&category=integration)
+[![Open your Home Assistant instance and open the repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=tamatyan99&repository=homeassistant_nature_remo&category=integration)
 
 1. Open HACS in Home Assistant
 2. Click the menu (⋮) in the top right corner
 3. Select "Custom repositories"
 4. Add this repository URL:
-   https://github.com/NaNaLinks/homeassistant_nature_remo  
+   `https://github.com/tamatyan99/homeassistant_nature_remo`  
    Category: Integration
 5. Install "Nature Remo"
 6. Restart Home Assistant
@@ -67,6 +76,10 @@ Click the button below to easily add this repository to HACS.
 
 - You can set the update interval (in seconds)
   - Default: `60 seconds`
+- You can set the motion detection threshold (in minutes)
+  - Default: `5 minutes`
+- You can configure a local IP address to communicate directly with your Nature Remo device
+- You can assign external temperature and humidity sensors per device
 
 ⚠️ Nature Remo Cloud API has rate limits.  
 Setting a very short update interval may cause the integration to reach the API request limit.
@@ -75,12 +88,14 @@ Setting a very short update interval may cause the integration to reach the API 
 
 ## Supported Entities
 
-| Type    | Description                                                        |
-|---------|--------------------------------------------------------------------|
-| climate | Control air conditioners (cooling, heating, dry)                   |
-| light   | Control lights (on/off, mode selection)                            |
-| sensor  | Temperature, humidity, illuminance, motion, power (buy/sell)      |
-| remote  | Send infrared signals defined as "signals" for IR/AC/LIGHT types  |
+| Type          | Description                                                        |
+|---------------|--------------------------------------------------------------------|
+| climate       | Control air conditioners (cooling, heating, dry, fan-only, auto)   |
+| light         | Control lights (on/off, mode selection, effects)                   |
+| sensor        | Temperature, humidity, illuminance, pressure, power (buy/sell)    |
+| remote        | Send infrared signals defined as "signals" for IR/AC/LIGHT types  |
+| switch        | On/off toggle for appliances with power signals                    |
+| binary_sensor | Motion detection with configurable timeout                         |
 
 *Additional entities may be supported in future updates.*
 
@@ -106,7 +121,7 @@ data:
 
 ## External Temperature and Humidity Sensors
 
-You can now configure external temperature and humidity sensors for each device.
+You can configure external temperature and humidity sensors for each device.
 
 By selecting entities from Home Assistant settings, the climate device will use the specified sensors instead of the default values provided by Nature Remo.
 
@@ -129,11 +144,36 @@ Once configured, the selected external sensors will be used for:
 
 ---
 
-## Author
+## Custom Services
 
-- Author: [@nanosns](https://github.com/nanosns) (NaNaRin)
-- Project: [@NaNaLinks](https://github.com/NaNaLinks)
-- Socials: [note](https://note.com/nanomana)
+The integration provides the following custom services under the `nature_remo` domain:
+
+| Service                | Description                                    |
+|------------------------|------------------------------------------------|
+| `send_light_mode`      | Send a specific mode command to a light entity |
+| `echonetlite_refresh`  | Refresh ECHONET Lite appliance properties      |
+| `learn_signal`         | Start learning an infrared signal              |
+
+---
+
+## Development & Contributing
+
+Contributions, bug reports, and feature requests are welcome!
+
+1. Fork this repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'feat: Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+Please open an issue first for significant changes or new features to discuss the approach.
+
+---
+
+## Authors
+
+- Original author: [@nanosns](https://github.com/nanosns) (NaNaRin) — [NaNaLinks](https://github.com/NaNaLinks)
+- Fork maintainer: [@tamatyan99](https://github.com/tamatyan99)
 
 ---
 
