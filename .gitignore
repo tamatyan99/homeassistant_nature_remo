@@ -28,3 +28,4 @@ scripts.yaml
 
 # optional
 custom_components/__pycache__/
+venv/
