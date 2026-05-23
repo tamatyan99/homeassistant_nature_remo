@@ -5,7 +5,13 @@ from typing import Any
 from aiohttp import ClientError
 
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.update_coordinator import (
+    ConfigEntryAuthFailed,
+    DataUpdateCoordinator,
+    UpdateFailed,
+)
+
+from .api import NatureRemoAuthError
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -185,6 +191,8 @@ class NatureRemoCoordinator(DataUpdateCoordinator):
             self.motion_sensors = new_motion_sensors
 
             return {ac["id"]: ac for ac in appliances}
+        except NatureRemoAuthError as err:
+            raise ConfigEntryAuthFailed(f"Authentication failed: {err}") from err
         except ClientError as err:
             raise UpdateFailed(f"通信エラー: {err}") from err
         except TimeoutError as err:

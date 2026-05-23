@@ -9,6 +9,10 @@ _LOGGER = logging.getLogger(__name__)
 NATURE_REMO_CLOUD_URL = "https://api.nature.global/1"
 
 
+class NatureRemoAuthError(ClientError):
+    """Raised when the API returns 401 Unauthorized."""
+
+
 class NatureRemoAPI:
 
     def __init__(self, hass, token, local_ip: str | None = None) -> None:
@@ -50,6 +54,12 @@ class NatureRemoAPI:
                 _LOGGER.warning("API制限に達しました! 429 Too Many Requests.")
 
             self._log_rate_limits(response)
+
+            if response.status == 401:
+                _LOGGER.error("Authentication failed: invalid API token")
+                raise NatureRemoAuthError(
+                    "API request failed with status 401 (Unauthorized)"
+                )
 
             if response.status == 200:
                 data = await response.json()

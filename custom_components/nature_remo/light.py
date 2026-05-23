@@ -3,9 +3,10 @@ import logging
 from aiohttp import ClientError
 from homeassistant.components.light import LightEntity, ColorMode
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .coordinator import NatureRemoCoordinator
 from .const import DOMAIN
 
@@ -38,12 +39,12 @@ async def async_setup_entry(
     async_add_entities(entities, True)
 
 
-class NatureRemoLight(LightEntity):
+class NatureRemoLight(CoordinatorEntity[NatureRemoCoordinator], LightEntity):
 
     def __init__(self, coordinator, appliance, device, api) -> None:
+        super().__init__(coordinator)
         self._attr_unique_id = f"nature_remo_light_{appliance['appliance_id']}"
         self._attr_name = f"Nature Remo {appliance['name']}"
-        self._coordinator = coordinator
         self._appliance = appliance
         self._device = device
         self._appliance_id = appliance["appliance_id"]
@@ -52,10 +53,6 @@ class NatureRemoLight(LightEntity):
         self._last_mode = "on"
         self._supported_effects: list[str] = []
         self._api = api
-
-    @property
-    def available(self) -> bool:
-        return self._coordinator.last_update_success
 
     @property
     def supported_effects(self) -> list[str]:
@@ -104,16 +101,18 @@ class NatureRemoLight(LightEntity):
         _LOGGER.debug(
             "[%s] async_added_to_hass: Light entity complete setup", self._attr_name
         )
-        self.async_on_remove(self._coordinator.async_add_listener(self.update_status))
-        self.update_status()
-        self._coordinator.entity_map[self.entity_id] = self
+        await super().async_added_to_hass()
+        self.coordinator.entity_map[self.entity_id] = self
+        self._handle_coordinator_update()
 
     async def async_will_remove_from_hass(self):
-        self._coordinator.entity_map.pop(self.entity_id, None)
+        self.coordinator.entity_map.pop(self.entity_id, None)
+        await super().async_will_remove_from_hass()
 
-    def update_status(self) -> None:
-        _LOGGER.debug("[%s] Start update_status.", self._attr_name)
-        appliance = self._coordinator.data.get(self._appliance_id, {})
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        _LOGGER.debug("[%s] Start _handle_coordinator_update.", self._attr_name)
+        appliance = self.coordinator.data.get(self._appliance_id, {})
 
         if appliance and "light" in appliance:
             _LOGGER.debug("Nature Remo Settings: %s", appliance["light"])
