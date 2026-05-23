@@ -1,11 +1,20 @@
 """Tests for NatureRemoAPI."""
 
+import asyncio
+
 import aiohttp
 import pytest
 from aiohttp import ClientError
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from custom_components.nature_remo.api import NATURE_REMO_CLOUD_URL, NatureRemoAPI
+
+
+@pytest.fixture(autouse=True)
+def mock_api_sleep():
+    """Patch asyncio.sleep in api.py to keep tests fast."""
+    with patch("custom_components.nature_remo.api.asyncio.sleep"):
+        yield
 
 
 def _mock_response(status=200, json_data=None, text=None):
@@ -127,3 +136,57 @@ class TestNatureRemoAPI:
         call_args = api_with_local_ip._session.post.call_args
         assert call_args[0][0] == "http://192.168.1.100/messages"
         assert call_args[1]["headers"]["Authorization"] == "Bearer test-token"
+
+    async def test_get_retries_on_429_then_succeeds(self, api):
+        resp_429 = _mock_response(status=429)
+        resp_200 = _mock_response(status=200, json_data=[{"id": "dev-1"}])
+        responses = [resp_429, resp_200]
+
+        class _MockCtx:
+            def __init__(self, resp):
+                self._resp = resp
+            async def __aenter__(self):
+                return self._resp
+            async def __aexit__(self, *args):
+                return False
+
+        api._session.get = MagicMock(side_effect=lambda *a, **k: _MockCtx(responses.pop(0)))
+        result = await api._get("/devices")
+        assert result == [{"id": "dev-1"}]
+        assert api._session.get.call_count == 2
+
+    async def test_get_raises_after_max_retries_on_429(self, api):
+        resp_429 = _mock_response(status=429)
+        responses = [resp_429, resp_429, resp_429, resp_429]
+
+        class _MockCtx:
+            def __init__(self, resp):
+                self._resp = resp
+            async def __aenter__(self):
+                return self._resp
+            async def __aexit__(self, *args):
+                return False
+
+        api._session.get = MagicMock(side_effect=lambda *a, **k: _MockCtx(responses.pop(0)))
+        with pytest.raises(ClientError, match="API request failed with status 429"):
+            await api._get("/devices")
+        assert api._session.get.call_count == 4
+
+    async def test_get_uses_retry_after_header(self, api):
+        resp_429 = _mock_response(status=429)
+        resp_429.headers = {"Retry-After": "2"}
+        resp_200 = _mock_response(status=200, json_data=[{"id": "dev-1"}])
+        responses = [resp_429, resp_200]
+
+        class _MockCtx:
+            def __init__(self, resp):
+                self._resp = resp
+            async def __aenter__(self):
+                return self._resp
+            async def __aexit__(self, *args):
+                return False
+
+        api._session.get = MagicMock(side_effect=lambda *a, **k: _MockCtx(responses.pop(0)))
+        result = await api._get("/devices")
+        assert result == [{"id": "dev-1"}]
+        assert api._session.get.call_count == 2

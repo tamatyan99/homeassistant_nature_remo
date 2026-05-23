@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime
 
@@ -49,34 +50,48 @@ class NatureRemoAPI:
         headers = {"Authorization": f"Bearer {self._token}"}
         base_url = self._get_base_url()
         url = f"{base_url}{path}"
-        async with self._session.get(url, headers=headers) as response:
-            if response.status == 429:
-                _LOGGER.warning("API制限に達しました! 429 Too Many Requests.")
+        max_retries = 3
 
-            self._log_rate_limits(response)
+        for attempt in range(max_retries + 1):
+            async with self._session.get(url, headers=headers) as response:
+                self._log_rate_limits(response)
 
-            if response.status == 401:
-                _LOGGER.error("Authentication failed: invalid API token")
-                raise NatureRemoAuthError(
-                    "API request failed with status 401 (Unauthorized)"
+                if response.status == 429:
+                    _LOGGER.warning("API rate limit hit (429)")
+                    if attempt < max_retries:
+                        delay = 2 ** attempt
+                        retry_after = response.headers.get("Retry-After")
+                        if retry_after:
+                            try:
+                                delay = int(retry_after)
+                            except ValueError:
+                                pass
+                        _LOGGER.warning("Retrying in %d seconds...", delay)
+                        await asyncio.sleep(delay)
+                        continue
+
+                if response.status == 401:
+                    _LOGGER.error("Authentication failed: invalid API token")
+                    raise NatureRemoAuthError(
+                        "API request failed with status 401 (Unauthorized)"
+                    )
+
+                if response.status == 200:
+                    data = await response.json()
+                    if not isinstance(data, (list, dict)):
+                        _LOGGER.error(
+                            "Unexpected response type from API: %s (expected list or dict)",
+                            type(data),
+                        )
+                        raise ValueError(
+                            f"Unexpected API response type: {type(data)}"
+                        )
+                    return data
+
+                _LOGGER.error("Failed to fetch request: %s", response.status)
+                raise ClientError(
+                    f"API request failed with status {response.status}"
                 )
-
-            if response.status == 200:
-                data = await response.json()
-                if not isinstance(data, (list, dict)):
-                    _LOGGER.error(
-                        "Unexpected response type from API: %s (expected list or dict)",
-                        type(data),
-                    )
-                    raise ValueError(
-                        f"Unexpected API response type: {type(data)}"
-                    )
-                return data
-
-            _LOGGER.error("Failed to fetch request: %s", response.status)
-            raise ClientError(
-                f"API request failed with status {response.status}"
-            )
 
     async def get_appliances(self):
         return await self._get("/appliances")
