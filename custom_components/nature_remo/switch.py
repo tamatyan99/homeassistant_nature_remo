@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from aiohttp import ClientError
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -98,7 +99,7 @@ class NatureRemoSwitchEntity(CoordinatorEntity[NatureRemoCoordinator], SwitchEnt
                 await self._api.send_command_signal(self._power_on_id)
                 self._is_on = True
                 self.async_write_ha_state()
-            except Exception:
+            except (ClientError, TimeoutError):
                 _LOGGER.error("Failed to send power ON command")
                 raise HomeAssistantError(
                     "Power ON command failed for %s" % self.name
@@ -114,7 +115,7 @@ class NatureRemoSwitchEntity(CoordinatorEntity[NatureRemoCoordinator], SwitchEnt
                 await self._api.send_command_signal(self._power_off_id)
                 self._is_on = False
                 self.async_write_ha_state()
-            except Exception:
+            except (ClientError, TimeoutError):
                 _LOGGER.error("Failed to send power OFF command")
                 raise HomeAssistantError(
                     "Power OFF command failed for %s" % self.name

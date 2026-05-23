@@ -1,0 +1,62 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Nature Remo",
+        "description": "Nature Remo APIキーを入力して接続してください。",
+        "data": {
+          "name": "名前",
+          "api_key": "APIキー"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "認証に失敗しました。APIキーを確認してください。"
+    },
+    "abort": {
+      "reauth_successful": "再認証が完了しました。"
+    },
+    "step": {
+      "reauth": {
+        "title": "Nature Remo の再認証",
+        "description": "APIキーの有効期限が切れました。新しいAPIキーを入力してください。",
+        "data": {
+          "api_key": "APIキー"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Nature Remo オプション"
+      }
+    }
+  },
+  "services": {
+    "send_light_mode": {
+      "name": "Nature Remo ライトモード",
+      "description": "選択したライトに対してボタン名でコマンドを送信します。",
+      "fields": {
+        "entity_id": {
+          "name": "エンティティ",
+          "description": "操作するライトエンティティ。"
+        },
+        "mode": {
+          "name": "操作モード",
+          "description": "実行したい操作モードを選択または入力してください（例: on, night）。"
+        }
+      }
+    },
+    "learn_signal": {
+      "name": "Nature Remo 信号学習",
+      "description": "赤外線信号の学習を開始します。",
+      "fields": {
+        "appliance_id": {
+          "name": "アプライアンスID",
+          "description": "信号を学習するアプライアンスのID。"
+        }
+      }
+    }
+  }
+}

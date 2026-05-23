@@ -1,0 +1,62 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Nature Remo",
+        "description": "Enter your Nature Remo API key to connect.",
+        "data": {
+          "name": "Name",
+          "api_key": "API Key"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid authentication. Please check your API key."
+    },
+    "abort": {
+      "reauth_successful": "Re-authentication was successful."
+    },
+    "step": {
+      "reauth": {
+        "title": "Re-authenticate Nature Remo",
+        "description": "The API key is no longer valid. Please enter a new API key.",
+        "data": {
+          "api_key": "API Key"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Nature Remo Options"
+      }
+    }
+  },
+  "services": {
+    "send_light_mode": {
+      "name": "Nature Remo Light Mode",
+      "description": "Send command to the selected light using button name.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "The light entity to control."
+        },
+        "mode": {
+          "name": "Mode",
+          "description": "Select or input the desired mode (e.g., on, night)."
+        }
+      }
+    },
+    "learn_signal": {
+      "name": "Nature Remo Learn Signal",
+      "description": "Start learning an infrared signal.",
+      "fields": {
+        "appliance_id": {
+          "name": "Appliance ID",
+          "description": "Appliance ID to learn a signal for."
+        }
+      }
+    }
+  }
+}

@@ -1,5 +1,6 @@
 import logging
 
+from aiohttp import ClientError
 from homeassistant.components.climate import (
     ClimateEntity,
     ClimateEntityFeature,
@@ -7,9 +8,10 @@ from homeassistant.components.climate import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .coordinator import NatureRemoCoordinator
 from .const import DOMAIN
 
@@ -51,7 +53,7 @@ async def async_setup_entry(
     async_add_entities(entities, True)
 
 
-class NatureRemoClimate(ClimateEntity):
+class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity):
 
     def __init__(
         self,
@@ -61,9 +63,9 @@ class NatureRemoClimate(ClimateEntity):
         api,
         entry_id: str | None = None,
     ) -> None:
+        super().__init__(coordinator)
         self._attr_unique_id = f"nature_remo_climate_{appliance['appliance_id']}"
         self._attr_name = f"Nature Remo {appliance['name']}"
-        self._coordinator = coordinator
         self._appliance = appliance
         self._device = device
         self._appliance_id = appliance["appliance_id"]
@@ -79,10 +81,6 @@ class NatureRemoClimate(ClimateEntity):
         self._aircon_range_modes = {}
         self._entry_id = entry_id
         self._preset_mode = "none"
-
-    @property
-    def available(self) -> bool:
-        return self._coordinator.last_update_success
 
     @property
     def device_info(self):
@@ -130,7 +128,7 @@ class NatureRemoClimate(ClimateEntity):
                 await self._api.send_command_climate(payload, self._appliance_id)
                 self._target_temperature = 26
                 self._preset_mode = "eco"
-            except Exception:
+            except (ClientError, TimeoutError):
                 _LOGGER.error("Failed to set preset mode")
         else:
             self._preset_mode = "none"
@@ -268,9 +266,10 @@ class NatureRemoClimate(ClimateEntity):
             )
             return None
 
-    def update_status(self) -> None:
-        _LOGGER.debug("[%s] Start update_status.", self._attr_name)
-        appliance = self._coordinator.data.get(self._appliance_id, {})
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        _LOGGER.debug("[%s] Start _handle_coordinator_update.", self._attr_name)
+        appliance = self.coordinator.data.get(self._appliance_id, {})
 
         external_temperature = self._get_external_sensor_value("temperature")
         if external_temperature is not None:
@@ -281,7 +280,7 @@ class NatureRemoClimate(ClimateEntity):
             self._humidity = external_humidity
 
         device_id = self._device["device_id"]
-        device_data = self._coordinator.devices.get(device_id)
+        device_data = self.coordinator.devices.get(device_id)
         if device_data is None:
             _LOGGER.warning(
                 "Device '%s' not found in coordinator devices.", device_id
@@ -371,11 +370,11 @@ class NatureRemoClimate(ClimateEntity):
         _LOGGER.debug(
             "External sensor '%s' state changed: %s", entity_id, new_state.state
         )
-        self.update_status()
+        self._handle_coordinator_update()
 
     async def async_added_to_hass(self):
         _LOGGER.debug("[%s] async_added_to_hass: Climate entity complete setup", self._attr_name)
-        self.async_on_remove(self._coordinator.async_add_listener(self.update_status))
+        await super().async_added_to_hass()
 
         external_entity_ids = self._get_external_sensor_entity_ids()
         if external_entity_ids:
@@ -390,7 +389,7 @@ class NatureRemoClimate(ClimateEntity):
                 )
             )
 
-        self.update_status()
+        self._handle_coordinator_update()
 
     async def async_set_hvac_mode(self, hvac_mode):
         _LOGGER.info("Setting HVAC mode: %s", hvac_mode)
@@ -409,7 +408,7 @@ class NatureRemoClimate(ClimateEntity):
 
         try:
             response = await self._api.send_command_climate(payload, self._appliance_id)
-        except Exception:
+        except (ClientError, TimeoutError):
             _LOGGER.error("Failed to set HVAC mode")
             self.async_write_ha_state()
             return
@@ -452,7 +451,7 @@ class NatureRemoClimate(ClimateEntity):
             await self._api.send_command_climate(payload, self._appliance_id)
             self._target_temperature = temperature
             self._button = ""
-        except Exception:
+        except (ClientError, TimeoutError):
             _LOGGER.error("Failed to set temperature")
 
         self.async_write_ha_state()
@@ -478,7 +477,7 @@ class NatureRemoClimate(ClimateEntity):
             await self._api.send_command_climate(payload, self._appliance_id)
             self._fan_mode = fan_mode
             self._button = ""
-        except Exception:
+        except (ClientError, TimeoutError):
             _LOGGER.error("Failed to set fan mode")
 
         self.async_write_ha_state()
@@ -498,7 +497,7 @@ class NatureRemoClimate(ClimateEntity):
             await self._api.send_command_climate(payload, self._appliance_id)
             self._swing_mode = swing_mode
             self._button = ""
-        except Exception:
+        except (ClientError, TimeoutError):
             _LOGGER.error("Failed to set swing mode")
 
         self.async_write_ha_state()

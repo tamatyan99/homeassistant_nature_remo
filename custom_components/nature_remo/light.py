@@ -1,5 +1,6 @@
 import logging
 
+from aiohttp import ClientError
 from homeassistant.components.light import LightEntity, ColorMode
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -143,7 +144,7 @@ class NatureRemoLight(LightEntity):
             )
             self._is_on = mode != "off"
             self._last_mode = mode
-        except Exception:
+        except (ClientError, TimeoutError):
             _LOGGER.error("Failed to turn on light")
         self.async_write_ha_state()
 
@@ -152,6 +153,6 @@ class NatureRemoLight(LightEntity):
             await self._api.send_light_command(self._appliance_id, "off")
             self._is_on = False
             self._last_mode = "off"
-        except Exception:
+        except (ClientError, TimeoutError):
             _LOGGER.error("Failed to turn off light")
         self.async_write_ha_state()

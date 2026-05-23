@@ -61,6 +61,35 @@ class NatureRemoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user", data_schema=API_SCHEMA, errors=errors
         )
 
+    async def async_step_reauth(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        errors = {}
+        reauth_entry = self._get_reauth_entry()
+
+        if user_input is not None:
+            api_key = user_input["api_key"]
+
+            try:
+                api = NatureRemoAPI(self.hass, api_key)
+                devices = await api.get_devices()
+                if not isinstance(devices, list):
+                    raise ValueError("Unexpected devices response type")
+            except (ClientError, TimeoutError, ValueError):
+                errors["base"] = "invalid_auth"
+            else:
+                self.hass.config_entries.async_update_entry(
+                    reauth_entry, data={"api_key": api_key}
+                )
+                await self.hass.config_entries.async_reload(reauth_entry.entry_id)
+                return self.async_abort(reason="reauth_successful")
+
+        return self.async_show_form(
+            step_id="reauth",
+            data_schema=vol.Schema({vol.Required("api_key"): str}),
+            errors=errors,
+        )
+
     @staticmethod
     @callback
     def async_get_options_flow(config_entry):

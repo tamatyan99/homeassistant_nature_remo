@@ -228,3 +228,26 @@ class NatureRemoAPI:
                 raise ClientError(
                     f"Signal send failed: {response.status}"
                 )
+
+    async def send_local_ir_message(self, freq: int, data: list[int]) -> dict:
+        _LOGGER.info("Sending local IR message: freq=%s data_length=%s", freq, len(data))
+        base_url = self._get_base_url()
+        url = f"{base_url}/messages"
+        headers = {"Authorization": f"Bearer {self._token}"}
+        payload = {"freq": freq, "data": data, "format": "us"}
+
+        async with self._session.post(
+            url, headers=headers, json=payload
+        ) as response:
+            self._log_rate_limits(response)
+
+            if response.status == 200:
+                response_json = await response.json()
+                _LOGGER.info("Local IR message sent successfully: %s", response_json)
+                return response_json
+
+            text = await response.text()
+            _LOGGER.error(
+                "Failed to send local IR message: %s - %s", response.status, text
+            )
+            raise ClientError(f"Local IR message failed: {response.status}")
