@@ -8,6 +8,7 @@ from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -54,6 +55,7 @@ async def async_setup_entry(
 class NatureRemoLearnSignalButton(CoordinatorEntity[NatureRemoCoordinator], ButtonEntity):
     """Button to learn a new IR signal for an appliance."""
 
+    _attr_entity_category = EntityCategory.CONFIG
     _attr_icon = "mdi:remote"
     _attr_has_entity_name = True
     _attr_should_poll = False
@@ -88,6 +90,7 @@ class NatureRemoLearnSignalButton(CoordinatorEntity[NatureRemoCoordinator], Butt
 class NatureRemoRefreshDataButton(CoordinatorEntity[NatureRemoCoordinator], ButtonEntity):
     """Button to manually refresh coordinator data."""
 
+    _attr_entity_category = EntityCategory.CONFIG
     _attr_icon = "mdi:refresh"
     _attr_has_entity_name = True
     _attr_should_poll = False

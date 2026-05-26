@@ -7,7 +7,6 @@ from homeassistant.components.climate import (
     HVACMode,
     PRESET_NONE,
 )
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
@@ -15,12 +14,17 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
+from .ac_helpers import (
+    ECO_TARGET_TEMPERATURE,
+    build_clear_preset_payload,
+    build_eco_preset_payload,
+)
+from .const import DOMAIN, HA_MODE_TO_REMO_MODE, REMO_MODE_TO_HA_MODE
 from .coordinator import NatureRemoCoordinator
+from .entity import get_device_info
 
 _LOGGER = logging.getLogger(__name__)
-
-from .const import DOMAIN, HA_MODE_TO_REMO_MODE, REMO_MODE_TO_HA_MODE
-from .entity import get_device_info
 
 
 async def async_setup_entry(
@@ -109,19 +113,23 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         if preset_mode == "eco":
-            payload = {"button": "eco", "temperature": "26"}
-            await self._apply_preset(preset_mode, 26, payload)
+            await self._apply_preset(
+                preset_mode,
+                ECO_TARGET_TEMPERATURE,
+                build_eco_preset_payload(),
+            )
         else:
-            operation_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
-            if operation_mode is None:
+            try:
+                payload = build_clear_preset_payload(
+                    self._hvac_mode, self._target_temperature
+                )
+            except HomeAssistantError:
                 self._preset_mode = PRESET_NONE
                 self.async_write_ha_state()
                 return
-            payload = {
-                "operation_mode": operation_mode,
-                "temperature": str(self._target_temperature),
-            }
-            await self._apply_preset(PRESET_NONE, self._target_temperature, payload)
+            await self._apply_preset(
+                PRESET_NONE, self._target_temperature, payload
+            )
 
     async def _apply_preset(self, preset_mode: str, target_temp: float, payload: dict) -> None:
         prev_preset = self._preset_mode
@@ -412,7 +420,7 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
         self._handle_coordinator_update()
 
     async def async_set_hvac_mode(self, hvac_mode):
-        _LOGGER.info("Setting HVAC mode: %s", hvac_mode)
+        _LOGGER.debug("Setting HVAC mode: %s", hvac_mode)
         if hvac_mode not in self.hvac_modes:
             raise HomeAssistantError(f"Unsupported HVAC mode: {hvac_mode}")
 

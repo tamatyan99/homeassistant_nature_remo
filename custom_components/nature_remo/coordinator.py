@@ -1,9 +1,12 @@
-from datetime import timedelta, datetime
+from __future__ import annotations
+
+from datetime import datetime, timedelta
 import logging
 from typing import Any
 
 from aiohttp import ClientError
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import (
     ConfigEntryAuthFailed,
@@ -12,19 +15,26 @@ from homeassistant.helpers.update_coordinator import (
 )
 from homeassistant.util.dt import now as dt_now
 
-from .api import NatureRemoAuthError
+from .api import NatureRemoAPI, NatureRemoAuthError
 
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class NatureRemoCoordinator(DataUpdateCoordinator):
+class NatureRemoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
-    def __init__(self, hass: HomeAssistant, api, update_interval: int = 60) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        api: NatureRemoAPI,
+        config_entry: ConfigEntry,
+        update_interval: int = 60,
+    ) -> None:
         super().__init__(
             hass,
             _LOGGER,
             name="Nature Remo Coordinator",
+            config_entry=config_entry,
             update_interval=timedelta(seconds=update_interval),
         )
         self.api = api
@@ -197,5 +207,3 @@ class NatureRemoCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(f"Data processing error: {err}") from err
         except ValueError as err:
             raise UpdateFailed(f"Data parse error: {err}") from err
-        except Exception as err:
-            raise UpdateFailed(f"Unexpected error: {err}") from err

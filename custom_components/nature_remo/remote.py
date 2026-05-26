@@ -6,9 +6,8 @@ from typing import Any
 from aiohttp import ClientError
 from homeassistant.components.remote import RemoteEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
-from homeassistant.core import callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -96,17 +95,26 @@ class NatureRemoRemoteEntity(CoordinatorEntity[NatureRemoCoordinator], RemoteEnt
         return super().available and bool(self._commands)
 
     async def async_send_command(self, command: list[str], **kwargs: Any) -> None:
-        failed = []
+        failed: list[str] = []
+        not_found: list[str] = []
         for cmd in command:
-            signal_id = self._commands.get(cmd)
-            if signal_id:
-                try:
-                    await self._api.send_command_signal(signal_id)
-                except (ClientError, TimeoutError) as err:
-                    failed.append(cmd)
-                    _LOGGER.error("Failed to send command '%s': %s", cmd, err)
+            signal_id = self._commands.get(cmd.lower())
+            if not signal_id:
+                not_found.append(cmd)
+                continue
+            try:
+                await self._api.send_command_signal(signal_id)
+            except (ClientError, TimeoutError) as err:
+                failed.append(cmd)
+                _LOGGER.error("Failed to send command '%s': %s", cmd, err)
+        if not_found:
+            raise ServiceValidationError(
+                f"Unknown commands: {', '.join(not_found)}"
+            )
         if failed:
-            raise ServiceValidationError(f"Failed to send commands: {', '.join(failed)}")
+            raise ServiceValidationError(
+                f"Failed to send commands: {', '.join(failed)}"
+            )
         self.async_write_ha_state()
 
     async def async_turn_on(self) -> None:

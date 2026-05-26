@@ -22,7 +22,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     MIN_UPDATE_INTERVAL = 10
     update_interval = max(MIN_UPDATE_INTERVAL, int(entry.options.get("update_interval", DEFAULT_UPDATE_INTERVAL)))
-    coordinator = NatureRemoCoordinator(hass, api, update_interval)
+    coordinator = NatureRemoCoordinator(hass, api, entry, update_interval)
 
     motion_threshold = int(entry.options.get("motion_threshold_minutes", DEFAULT_MOTION_THRESHOLD_MINUTES))
     if motion_threshold < 1:

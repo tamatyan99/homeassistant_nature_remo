@@ -8,7 +8,8 @@ from aiohttp import ClientError
 from typing import Any
 
 from homeassistant import config_entries
-from homeassistant.core import callback
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 
 from .api import NatureRemoAPI, NatureRemoAuthError
@@ -105,9 +106,26 @@ class NatureRemoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="reauth",
-            data_schema=vol.Schema({vol.Required("api_key"): str}),
+            data_schema=vol.Schema(
+                {vol.Required("api_key"): vol.All(str, vol.Length(min=1))}
+            ),
             errors=errors,
         )
+
+    @staticmethod
+    async def async_migrate_entry(
+        hass: HomeAssistant, config_entry: ConfigEntry
+    ) -> bool:
+        """Migrate config entry to the latest minor version."""
+        if config_entry.version > NatureRemoConfigFlow.VERSION:
+            return False
+        if config_entry.minor_version >= NatureRemoConfigFlow.MINOR_VERSION:
+            return True
+        hass.config_entries.async_update_entry(
+            config_entry,
+            minor_version=NatureRemoConfigFlow.MINOR_VERSION,
+        )
+        return True
 
     @staticmethod
     @callback

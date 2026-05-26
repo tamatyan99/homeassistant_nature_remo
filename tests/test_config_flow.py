@@ -248,3 +248,22 @@ async def test_unique_id_conflict(hass):
 
     assert result["type"] == FlowResultType.ABORT
     assert result["reason"] == "already_configured"
+
+
+async def test_migrate_entry_updates_minor_version(hass):
+    """Test config entry migration bumps minor version."""
+    from custom_components.nature_remo.config_flow import NatureRemoConfigFlow
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"api_key": "test_key"},
+        version=1,
+        minor_version=1,
+    )
+    entry.add_to_hass(hass)
+
+    result = await NatureRemoConfigFlow.async_migrate_entry(hass, entry)
+
+    assert result is True
+    assert entry.minor_version == NatureRemoConfigFlow.MINOR_VERSION

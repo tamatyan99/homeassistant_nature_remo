@@ -9,7 +9,13 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, HA_MODE_TO_REMO_MODE, REMO_MODE_TO_HA_MODE
+from .ac_helpers import (
+    ECO_TARGET_TEMPERATURE,
+    build_clear_preset_payload,
+    build_eco_preset_payload,
+    preset_option_from_settings,
+)
+from .const import DOMAIN, REMO_MODE_TO_HA_MODE
 from .entity import get_device_info
 from .coordinator import NatureRemoCoordinator
 
@@ -100,8 +106,6 @@ class NatureRemoLightSelect(CoordinatorEntity[NatureRemoCoordinator], SelectEnti
         self.async_write_ha_state()
 
 
-# NOTE: Preset logic is duplicated with NatureRemoClimate.async_set_preset_mode.
-# When changing either side, keep them in sync or extract a shared helper.
 class NatureRemoAcPresetSelect(CoordinatorEntity[NatureRemoCoordinator], SelectEntity):
     _attr_has_entity_name = True
     _attr_should_poll = False
@@ -127,10 +131,7 @@ class NatureRemoAcPresetSelect(CoordinatorEntity[NatureRemoCoordinator], SelectE
         appliance = self.coordinator.data.get(self._appliance_id, {})
         if appliance and "settings" in appliance:
             settings = appliance["settings"]
-            if settings.get("button") == "eco":
-                self._attr_current_option = "eco"
-            else:
-                self._attr_current_option = "none"
+            self._attr_current_option = preset_option_from_settings(settings)
             remo_mode = settings.get("mode", "")
             ha_mode_str = REMO_MODE_TO_HA_MODE.get(remo_mode)
             if ha_mode_str is not None:
@@ -145,10 +146,7 @@ class NatureRemoAcPresetSelect(CoordinatorEntity[NatureRemoCoordinator], SelectE
             raise HomeAssistantError(f"Invalid option: {option}")
 
         if option == "eco":
-            operation_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
-            if operation_mode is None:
-                raise HomeAssistantError(f"Invalid HVAC mode: {self._hvac_mode}")
-            payload = {"button": "eco", "temperature": "26"}
+            payload = build_eco_preset_payload()
             prev_option = self._attr_current_option
             try:
                 await self._api.send_command_climate(payload, self._appliance_id)
@@ -158,15 +156,13 @@ class NatureRemoAcPresetSelect(CoordinatorEntity[NatureRemoCoordinator], SelectE
                 self.async_write_ha_state()
                 raise
         else:
-            operation_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
-            if operation_mode is None:
-                raise HomeAssistantError(f"Invalid HVAC mode: {self._hvac_mode}")
             appliance = self.coordinator.data.get(self._appliance_id, {})
             temp = appliance.get("settings", {}).get("temp", "25") if appliance else "25"
-            payload = {
-                "operation_mode": operation_mode,
-                "temperature": str(temp),
-            }
+            try:
+                target_temp = int(temp)
+            except (TypeError, ValueError):
+                target_temp = 25
+            payload = build_clear_preset_payload(self._hvac_mode, target_temp)
             prev_option = self._attr_current_option
             try:
                 await self._api.send_command_climate(payload, self._appliance_id)

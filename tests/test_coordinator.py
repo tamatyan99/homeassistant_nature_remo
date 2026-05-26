@@ -7,8 +7,18 @@ import pytest
 from aiohttp import ClientError
 from homeassistant.helpers.update_coordinator import ConfigEntryAuthFailed, UpdateFailed
 
+from pytest_homeassistant_custom_component.common import MockConfigEntry
+
 from custom_components.nature_remo.api import NatureRemoAuthError
+from custom_components.nature_remo.const import DOMAIN
 from custom_components.nature_remo.coordinator import NatureRemoCoordinator
+
+
+@pytest.fixture
+def config_entry(hass):
+    entry = MockConfigEntry(domain=DOMAIN, data={"api_key": "test_key"})
+    entry.add_to_hass(hass)
+    return entry
 
 
 @pytest.fixture
@@ -21,7 +31,7 @@ def mock_api():
 
 
 class TestNatureRemoCoordinator:
-    async def test_async_update_data_parses_devices(self, hass, mock_api):
+    async def test_async_update_data_parses_devices(self, hass, mock_api, config_entry):
         mock_api.get_devices = AsyncMock(
             return_value=[
                 {
@@ -36,7 +46,7 @@ class TestNatureRemoCoordinator:
         )
         mock_api.get_appliances = AsyncMock(return_value=[])
 
-        coordinator = NatureRemoCoordinator(hass, mock_api, update_interval=60)
+        coordinator = NatureRemoCoordinator(hass, mock_api, config_entry, update_interval=60)
         result = await coordinator._async_update_data()
 
         assert coordinator.devices == {
@@ -52,46 +62,46 @@ class TestNatureRemoCoordinator:
         assert result == {}
 
     async def test_async_update_data_raises_update_failed_on_bad_devices(
-        self, hass, mock_api
+        self, hass, mock_api, config_entry
     ):
         mock_api.get_devices = AsyncMock(return_value="bad")
         mock_api.get_appliances = AsyncMock(return_value=[])
 
-        coordinator = NatureRemoCoordinator(hass, mock_api, update_interval=60)
+        coordinator = NatureRemoCoordinator(hass, mock_api, config_entry, update_interval=60)
         with pytest.raises(UpdateFailed, match="Unexpected devices response from API"):
             await coordinator._async_update_data()
 
     async def test_async_update_data_raises_update_failed_on_bad_appliances(
-        self, hass, mock_api
+        self, hass, mock_api, config_entry
     ):
         mock_api.get_devices = AsyncMock(return_value=[])
         mock_api.get_appliances = AsyncMock(return_value="bad")
 
-        coordinator = NatureRemoCoordinator(hass, mock_api, update_interval=60)
+        coordinator = NatureRemoCoordinator(hass, mock_api, config_entry, update_interval=60)
         with pytest.raises(
             UpdateFailed, match="Unexpected appliances response from API"
         ):
             await coordinator._async_update_data()
 
-    async def test_coordinator_auth_error(self, hass, mock_api):
+    async def test_coordinator_auth_error(self, hass, mock_api, config_entry):
         mock_api.get_devices = AsyncMock(side_effect=NatureRemoAuthError("401"))
-        coordinator = NatureRemoCoordinator(hass, mock_api, 60)
+        coordinator = NatureRemoCoordinator(hass, mock_api, config_entry, 60)
         with pytest.raises(ConfigEntryAuthFailed):
             await coordinator._async_update_data()
 
-    async def test_client_error_raises_update_failed(self, hass, mock_api):
+    async def test_client_error_raises_update_failed(self, hass, mock_api, config_entry):
         mock_api.get_devices = AsyncMock(side_effect=ClientError("connection error"))
-        coordinator = NatureRemoCoordinator(hass, mock_api, 60)
+        coordinator = NatureRemoCoordinator(hass, mock_api, config_entry, 60)
         with pytest.raises(UpdateFailed, match="Communication error"):
             await coordinator._async_update_data()
 
-    async def test_timeout_error_raises_update_failed(self, hass, mock_api):
+    async def test_timeout_error_raises_update_failed(self, hass, mock_api, config_entry):
         mock_api.get_devices = AsyncMock(side_effect=TimeoutError("timed out"))
-        coordinator = NatureRemoCoordinator(hass, mock_api, 60)
+        coordinator = NatureRemoCoordinator(hass, mock_api, config_entry, 60)
         with pytest.raises(UpdateFailed, match="API response timed out"):
             await coordinator._async_update_data()
 
-    async def test_smart_meter_parsing(self, hass, mock_api):
+    async def test_smart_meter_parsing(self, hass, mock_api, config_entry):
         mock_api.get_devices = AsyncMock(return_value=[])
         mock_api.get_appliances = AsyncMock(
             return_value=[
@@ -113,14 +123,16 @@ class TestNatureRemoCoordinator:
             ]
         )
 
-        coordinator = NatureRemoCoordinator(hass, mock_api, update_interval=60)
+        coordinator = NatureRemoCoordinator(hass, mock_api, config_entry, update_interval=60)
         await coordinator._async_update_data()
 
         assert "app-1" in coordinator.smart_meters
         assert coordinator.smart_meters["app-1"]["name"] == "Smart Meter"
         assert coordinator.smart_meters["app-1"]["current_power"] == 0
 
-    async def test_invalid_timestamp_not_in_motion_sensors(self, hass, mock_api):
+    async def test_invalid_timestamp_not_in_motion_sensors(
+        self, hass, mock_api, config_entry
+    ):
         mock_api.get_devices = AsyncMock(
             return_value=[
                 {
@@ -135,12 +147,12 @@ class TestNatureRemoCoordinator:
         )
         mock_api.get_appliances = AsyncMock(return_value=[])
 
-        coordinator = NatureRemoCoordinator(hass, mock_api, update_interval=60)
+        coordinator = NatureRemoCoordinator(hass, mock_api, config_entry, update_interval=60)
         await coordinator._async_update_data()
 
         assert "dev-1" not in coordinator.motion_sensors
 
-    async def test_motion_sensor_active(self, hass, mock_api):
+    async def test_motion_sensor_active(self, hass, mock_api, config_entry):
         now = datetime.now(timezone.utc)
         created_at = now - timedelta(minutes=2)
         created_at_str = created_at.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -159,14 +171,14 @@ class TestNatureRemoCoordinator:
         )
         mock_api.get_appliances = AsyncMock(return_value=[])
 
-        coordinator = NatureRemoCoordinator(hass, mock_api, update_interval=60)
+        coordinator = NatureRemoCoordinator(hass, mock_api, config_entry, update_interval=60)
         await coordinator._async_update_data()
 
         assert "dev-1" in coordinator.motion_sensors
         assert coordinator.motion_sensors["dev-1"]["is_active"] is True
         assert coordinator.motion_sensors["dev-1"]["name"] == "Sensor"
 
-    async def test_motion_sensor_inactive(self, hass, mock_api):
+    async def test_motion_sensor_inactive(self, hass, mock_api, config_entry):
         now = datetime.now(timezone.utc)
         created_at = now - timedelta(minutes=10)
         created_at_str = created_at.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -185,7 +197,7 @@ class TestNatureRemoCoordinator:
         )
         mock_api.get_appliances = AsyncMock(return_value=[])
 
-        coordinator = NatureRemoCoordinator(hass, mock_api, update_interval=60)
+        coordinator = NatureRemoCoordinator(hass, mock_api, config_entry, update_interval=60)
         await coordinator._async_update_data()
 
         assert "dev-1" in coordinator.motion_sensors
