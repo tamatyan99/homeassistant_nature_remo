@@ -75,8 +75,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             ):
                 target_api = entry_data["api"]
                 break
-        else:
-            target_api = api
+
+        if target_api is None:
+            raise ServiceValidationError(
+                f"appliance_id '{appliance_id}' not found in any configured entry"
+            )
 
         result = await target_api.learn_signal(appliance_id)
         return result

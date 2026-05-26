@@ -13,6 +13,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api import NatureRemoAPI
 from .const import DOMAIN, OFF_COMMANDS, ON_COMMANDS
+from .entity import get_device_info
 from .coordinator import NatureRemoCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -66,17 +67,7 @@ class NatureRemoRemoteEntity(CoordinatorEntity[NatureRemoCoordinator], RemoteEnt
 
     @property
     def device_info(self):
-        info = {
-            "identifiers": {(DOMAIN, self._device["device_id"])},
-            "name": self._device["name"],
-            "manufacturer": "Nature",
-            "model": self._device.get("firmware_version") or "Nature Remo",
-            "sw_version": self._device.get("firmware_version", ""),
-        }
-        mac = self._device.get("mac_address")
-        if mac:
-            info["connections"] = {("mac", mac)}
-        return info
+        return get_device_info(self._device)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

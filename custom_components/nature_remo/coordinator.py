@@ -72,7 +72,7 @@ class NatureRemoCoordinator(DataUpdateCoordinator):
                             created_at = None
                         if created_at is not None:
                             now = datetime.now(created_at.tzinfo)
-                            is_active = abs(now - created_at) < timedelta(
+                            is_active = (now - created_at) < timedelta(
                                 minutes=self.motion_threshold_minutes
                             )
                             new_motion_sensors[device_id] = {
@@ -199,10 +199,10 @@ class NatureRemoCoordinator(DataUpdateCoordinator):
         except NatureRemoAuthError as err:
             raise ConfigEntryAuthFailed(f"Authentication failed: {err}") from err
         except ClientError as err:
-            raise UpdateFailed(f"通信エラー: {err}") from err
+            raise UpdateFailed(f"Communication error: {err}") from err
         except TimeoutError as err:
-            raise UpdateFailed("APIの応答がタイムアウトしました") from err
+            raise UpdateFailed("API response timed out") from err
         except (TypeError, AttributeError, KeyError) as err:
-            raise UpdateFailed(f"データ処理エラー: {err}") from err
+            raise UpdateFailed(f"Data processing error: {err}") from err
         except ValueError as err:
-            raise UpdateFailed(f"JSONデータのパースエラー: {err}") from err
+            raise UpdateFailed(f"Data parse error: {err}") from err

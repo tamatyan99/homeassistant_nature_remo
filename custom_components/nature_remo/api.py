@@ -138,12 +138,12 @@ class NatureRemoAPI:
 
                 if response.status == 200:
                     response_json = await response.json()
-                    _LOGGER.info("エアコンの操作に成功しました: %s", response_json)
+                    _LOGGER.info("Climate command succeeded: %s", response_json)
                     return response_json
 
                 text = await response.text()
                 _LOGGER.error(
-                    "エアコンの操作に失敗しました: %s - %s", response.status, text
+                    "Climate command failed: %s - %s", response.status, text
                 )
                 raise ClientError(f"Climate command failed: {response.status}")
         except (ClientError, TimeoutError) as err:
@@ -166,7 +166,7 @@ class NatureRemoAPI:
 
                 if response.status == 200:
                     response_json = await response.json()
-                    _LOGGER.info("照明の操作に成功しました: %s", response_json)
+                    _LOGGER.info("Light command succeeded: %s", response_json)
                     return response_json
 
                 text = await response.text()
@@ -204,6 +204,14 @@ class NatureRemoAPI:
             raise ClientError(f"Signal learn failed: {err}") from err
 
     def parse_smart_meter_properties(self, properties: list[dict]) -> dict:
+        from .const import (
+            SMART_METER_EPC_COEFFICIENT,
+            SMART_METER_EPC_UNIT,
+            SMART_METER_EPC_BUY_POWER,
+            SMART_METER_EPC_SOLD_POWER,
+            SMART_METER_EPC_INSTANT_POWER,
+        )
+
         coefficient = 1
         unit_power = 0
         buy_power_raw = 0
@@ -226,17 +234,15 @@ class NatureRemoAPI:
             except (ValueError, TypeError):
                 val = 0
 
-            if epc == 211:
+            if epc == SMART_METER_EPC_COEFFICIENT:
                 coefficient = val
-            elif epc == 215:
-                continue
-            elif epc == 224:
-                buy_power_raw = val
-            elif epc == 225:
+            elif epc == SMART_METER_EPC_UNIT:
                 unit_power = val
-            elif epc == 227:
+            elif epc == SMART_METER_EPC_BUY_POWER:
+                buy_power_raw = val
+            elif epc == SMART_METER_EPC_SOLD_POWER:
                 sold_power_raw = val
-            elif epc == 231:
+            elif epc == SMART_METER_EPC_INSTANT_POWER:
                 instant_power = val
 
         unit_table = {

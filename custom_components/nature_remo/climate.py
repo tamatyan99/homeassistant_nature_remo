@@ -18,17 +18,8 @@ from .coordinator import NatureRemoCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-from .const import DOMAIN, MODE_MAP
-
-MODE_MAP_HA = {
-    HVACMode.COOL: MODE_MAP["cool"],
-    HVACMode.HEAT: MODE_MAP["warm"],
-    HVACMode.DRY: MODE_MAP["dry"],
-    HVACMode.FAN_ONLY: MODE_MAP["blow"],
-    HVACMode.AUTO: MODE_MAP["auto"],
-}
-
-REVERSE_MODE_MAP = {v: k for k, v in MODE_MAP_HA.items()}
+from .const import DOMAIN, HA_MODE_TO_REMO_MODE, REMO_MODE_TO_HA_MODE
+from .entity import get_device_info
 
 
 async def async_setup_entry(
@@ -90,17 +81,7 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
 
     @property
     def device_info(self):
-        info = {
-            "identifiers": {(DOMAIN, self._device["device_id"])},
-            "name": self._device["name"],
-            "manufacturer": "Nature",
-            "model": self._device.get("firmware_version") or "Nature Remo",
-            "sw_version": self._device.get("firmware_version", ""),
-        }
-        mac = self._device.get("mac_address")
-        if mac:
-            info["connections"] = {("mac", mac)}
-        return info
+        return get_device_info(self._device)
 
     @property
     def supported_features(self) -> int:
@@ -134,13 +115,13 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
                 self._preset_mode = "eco"
                 self._target_temperature = 26
                 self.async_write_ha_state()
-            except Exception:
+            except (ClientError, TimeoutError):
                 self._preset_mode = prev_preset
                 self._target_temperature = prev_temp
                 self.async_write_ha_state()
                 raise
         else:
-            operation_mode = MODE_MAP_HA.get(self._hvac_mode)
+            operation_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
             if operation_mode is None:
                 self._preset_mode = PRESET_NONE
                 self.async_write_ha_state()
@@ -154,14 +135,14 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
                 await self._api.send_command_climate(payload, self._appliance_id)
                 self._preset_mode = PRESET_NONE
                 self.async_write_ha_state()
-            except Exception:
+            except (ClientError, TimeoutError):
                 self._preset_mode = prev_preset
                 self.async_write_ha_state()
                 raise
 
     @property
     def target_temperature_step(self) -> float:
-        remo_mode = MODE_MAP_HA.get(self._hvac_mode)
+        remo_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
         temp_list = self._aircon_range_modes.get(remo_mode, {}).get("temp", [])
         try:
             temp_list = list(map(float, filter(None, temp_list)))
@@ -182,7 +163,7 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
 
     @property
     def min_temp(self):
-        remo_mode = MODE_MAP_HA.get(self._hvac_mode)
+        remo_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
         temp_list = self._aircon_range_modes.get(remo_mode, {}).get("temp", [])
         try:
             temp_list = list(map(float, filter(None, temp_list)))
@@ -194,7 +175,7 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
 
     @property
     def max_temp(self):
-        remo_mode = MODE_MAP_HA.get(self._hvac_mode)
+        remo_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
         temp_list = self._aircon_range_modes.get(remo_mode, {}).get("temp", [])
         try:
             temp_list = list(map(float, filter(None, temp_list)))
@@ -228,12 +209,12 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
 
     @property
     def fan_modes(self) -> list[str] | None:
-        remo_mode = MODE_MAP_HA.get(self._hvac_mode)
+        remo_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
         return self._aircon_range_modes.get(remo_mode, {}).get("vol", [])
 
     @property
     def swing_modes(self) -> list[str] | None:
-        remo_mode = MODE_MAP_HA.get(self._hvac_mode)
+        remo_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
         return self._aircon_range_modes.get(remo_mode, {}).get("dir", [])
 
     @property
@@ -370,7 +351,13 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
         self.async_write_ha_state()
 
     def get_remo_mode_to_hvac_mode(self, remo_mode) -> HVACMode | None:
-        return REVERSE_MODE_MAP.get(remo_mode)
+        ha_mode_str = REMO_MODE_TO_HA_MODE.get(remo_mode)
+        if ha_mode_str is None:
+            return None
+        try:
+            return HVACMode(ha_mode_str)
+        except ValueError:
+            return None
 
     def _get_external_sensor_entity_ids(self) -> list[str]:
         if self.hass is None or self._entry_id is None:
@@ -437,12 +424,12 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
         if hvac_mode == HVACMode.OFF:
             payload = {"button": "power-off"}
         else:
-            operation_mode = MODE_MAP.get(hvac_mode)
+            operation_mode = HA_MODE_TO_REMO_MODE.get(hvac_mode.value)
             payload = {"operation_mode": operation_mode}
 
         try:
             response = await self._api.send_command_climate(payload, self._appliance_id)
-        except Exception:
+        except (ClientError, TimeoutError):
             self._button = prev_button
             self._hvac_mode = prev_hvac_mode
             self.async_write_ha_state()
@@ -474,10 +461,10 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
     async def async_set_temperature(self, **kwargs):
         temperature = kwargs.get(ATTR_TEMPERATURE)
         if temperature is None:
-            _LOGGER.warning("温度が指定されていません！")
+            _LOGGER.warning("Temperature not specified!")
             return
 
-        operation_mode = MODE_MAP_HA.get(self._hvac_mode)
+        operation_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
         if operation_mode is None:
             _LOGGER.error("Invalid HVAC mode: %s", self._hvac_mode)
             return
@@ -496,7 +483,7 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
             await self._api.send_command_climate(payload, self._appliance_id)
             self._target_temperature = temperature
             self._button = ""
-        except Exception:
+        except (ClientError, TimeoutError):
             self._target_temperature = prev_target
             self._button = prev_button
             self.async_write_ha_state()
@@ -511,7 +498,7 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
             return str(value)
 
     async def async_set_fan_mode(self, fan_mode: str) -> None:
-        operation_mode = MODE_MAP_HA.get(self._hvac_mode)
+        operation_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
         if operation_mode is None:
             _LOGGER.error("Invalid HVAC mode: %s", self._hvac_mode)
             return
@@ -527,7 +514,7 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
             await self._api.send_command_climate(payload, self._appliance_id)
             self._fan_mode = fan_mode
             self._button = ""
-        except Exception:
+        except (ClientError, TimeoutError):
             self._fan_mode = prev_fan
             self._button = prev_button
             self.async_write_ha_state()
@@ -536,7 +523,7 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
         self.async_write_ha_state()
 
     async def async_set_swing_mode(self, swing_mode: str) -> None:
-        operation_mode = MODE_MAP_HA.get(self._hvac_mode)
+        operation_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
         if operation_mode is None:
             _LOGGER.error("Invalid HVAC mode: %s", self._hvac_mode)
             return
@@ -552,7 +539,7 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
             await self._api.send_command_climate(payload, self._appliance_id)
             self._swing_mode = swing_mode
             self._button = ""
-        except Exception:
+        except (ClientError, TimeoutError):
             self._swing_mode = prev_swing
             self._button = prev_button
             self.async_write_ha_state()

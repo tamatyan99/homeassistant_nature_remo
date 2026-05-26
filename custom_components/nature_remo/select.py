@@ -9,20 +9,11 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, MODE_MAP
+from .const import DOMAIN, HA_MODE_TO_REMO_MODE, REMO_MODE_TO_HA_MODE
+from .entity import get_device_info
 from .coordinator import NatureRemoCoordinator
 
 _LOGGER = logging.getLogger(__name__)
-
-MODE_MAP_HA = {
-    HVACMode.COOL: MODE_MAP["cool"],
-    HVACMode.HEAT: MODE_MAP["warm"],
-    HVACMode.DRY: MODE_MAP["dry"],
-    HVACMode.FAN_ONLY: MODE_MAP["blow"],
-    HVACMode.AUTO: MODE_MAP["auto"],
-}
-
-REVERSE_MODE_MAP = {v: k for k, v in MODE_MAP_HA.items()}
 
 
 async def async_setup_entry(
@@ -79,17 +70,7 @@ class NatureRemoLightSelect(CoordinatorEntity[NatureRemoCoordinator], SelectEnti
 
     @property
     def device_info(self):
-        info = {
-            "identifiers": {(DOMAIN, self._device["device_id"])},
-            "name": self._device["name"],
-            "manufacturer": "Nature",
-            "model": self._device.get("firmware_version") or "Nature Remo",
-            "sw_version": self._device.get("firmware_version", ""),
-        }
-        mac = self._device.get("mac_address")
-        if mac:
-            info["connections"] = {("mac", mac)}
-        return info
+        return get_device_info(self._device)
 
     @property
     def available(self) -> bool:
@@ -115,7 +96,7 @@ class NatureRemoLightSelect(CoordinatorEntity[NatureRemoCoordinator], SelectEnti
         try:
             await self._api.send_light_command(self._appliance_id, option)
             self._attr_current_option = option
-        except Exception:
+        except (ClientError, TimeoutError):
             self._attr_current_option = prev_option
             self.async_write_ha_state()
             raise
@@ -165,9 +146,12 @@ class NatureRemoAcPresetSelect(CoordinatorEntity[NatureRemoCoordinator], SelectE
             else:
                 self._attr_current_option = "none"
             remo_mode = settings.get("mode", "")
-            hvac_mode = REVERSE_MODE_MAP.get(remo_mode)
-            if hvac_mode is not None:
-                self._hvac_mode = hvac_mode
+            ha_mode_str = REMO_MODE_TO_HA_MODE.get(remo_mode)
+            if ha_mode_str is not None:
+                try:
+                    self._hvac_mode = HVACMode(ha_mode_str)
+                except ValueError:
+                    pass
         self.async_write_ha_state()
 
     async def async_select_option(self, option: str) -> None:
@@ -175,7 +159,7 @@ class NatureRemoAcPresetSelect(CoordinatorEntity[NatureRemoCoordinator], SelectE
             raise HomeAssistantError(f"Invalid option: {option}")
 
         if option == "eco":
-            operation_mode = MODE_MAP_HA.get(self._hvac_mode)
+            operation_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
             if operation_mode is None:
                 return
             payload = {"button": "eco", "temperature": "26"}
@@ -183,12 +167,12 @@ class NatureRemoAcPresetSelect(CoordinatorEntity[NatureRemoCoordinator], SelectE
             try:
                 await self._api.send_command_climate(payload, self._appliance_id)
                 self._attr_current_option = "eco"
-            except Exception:
+            except (ClientError, TimeoutError):
                 self._attr_current_option = prev_option
                 self.async_write_ha_state()
                 raise
         else:
-            operation_mode = MODE_MAP_HA.get(self._hvac_mode)
+            operation_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
             if operation_mode is None:
                 self._attr_current_option = None
                 self.async_write_ha_state()
@@ -203,7 +187,7 @@ class NatureRemoAcPresetSelect(CoordinatorEntity[NatureRemoCoordinator], SelectE
             try:
                 await self._api.send_command_climate(payload, self._appliance_id)
                 self._attr_current_option = None
-            except Exception:
+            except (ClientError, TimeoutError):
                 self._attr_current_option = prev_option
                 self.async_write_ha_state()
                 raise

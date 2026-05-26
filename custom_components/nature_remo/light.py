@@ -9,6 +9,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .coordinator import NatureRemoCoordinator
 from .const import DOMAIN
+from .entity import get_device_info
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -65,17 +66,7 @@ class NatureRemoLight(CoordinatorEntity[NatureRemoCoordinator], LightEntity):
 
     @property
     def device_info(self):
-        info = {
-            "identifiers": {(DOMAIN, self._device["device_id"])},
-            "name": self._device["name"],
-            "manufacturer": "Nature",
-            "model": self._device.get("firmware_version") or "Nature Remo",
-            "sw_version": self._device.get("firmware_version", ""),
-        }
-        mac = self._device.get("mac_address")
-        if mac:
-            info["connections"] = {("mac", mac)}
-        return info
+        return get_device_info(self._device)
 
     @property
     def supported_color_modes(self):
@@ -152,7 +143,7 @@ class NatureRemoLight(CoordinatorEntity[NatureRemoCoordinator], LightEntity):
             )
             self._is_on = effect != "off"
             self._last_mode = effect
-        except Exception:
+        except (ClientError, TimeoutError):
             self._is_on = prev_is_on
             self._last_mode = prev_mode
             self.async_write_ha_state()
@@ -166,7 +157,7 @@ class NatureRemoLight(CoordinatorEntity[NatureRemoCoordinator], LightEntity):
             await self._api.send_light_command(self._appliance_id, "off")
             self._is_on = False
             self._last_mode = "off"
-        except Exception:
+        except (ClientError, TimeoutError):
             self._is_on = prev_is_on
             self._last_mode = prev_mode
             self.async_write_ha_state()

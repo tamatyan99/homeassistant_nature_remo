@@ -3,6 +3,7 @@ from homeassistant.core import callback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .coordinator import NatureRemoCoordinator
 from .const import DOMAIN
+from .entity import get_device_info
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
@@ -44,17 +45,7 @@ class NatureRemoMotionEvent(CoordinatorEntity[NatureRemoCoordinator], EventEntit
 
     @property
     def device_info(self):
-        info = {
-            "identifiers": {(DOMAIN, self._device["device_id"])},
-            "name": self._device["name"],
-            "manufacturer": "Nature",
-            "model": self._device.get("firmware_version") or "Nature Remo",
-            "sw_version": self._device.get("firmware_version", ""),
-        }
-        mac = self._device.get("mac_address")
-        if mac:
-            info["connections"] = {("mac", mac)}
-        return info
+        return get_device_info(self._device)
 
     @callback
     def _handle_coordinator_update(self) -> None:
