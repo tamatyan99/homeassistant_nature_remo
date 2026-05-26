@@ -6,6 +6,7 @@ from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -17,8 +18,10 @@ _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
-):
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
     _LOGGER.debug("Nature Remo Select: async_setup_entry called")
 
     coordinator: NatureRemoCoordinator = hass.data[DOMAIN][entry.entry_id][
@@ -57,11 +60,11 @@ async def async_setup_entry(
 class NatureRemoLightSelect(CoordinatorEntity[NatureRemoCoordinator], SelectEntity):
     _attr_has_entity_name = True
     _attr_should_poll = False
+    _attr_translation_key = "light_mode"
 
     def __init__(self, coordinator, appliance, device, api) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"nature_remo_light_select_{appliance['appliance_id']}"
-        self._attr_name = "Mode"
         self._appliance = appliance
         self._device = device
         self._appliance_id = appliance["appliance_id"]
@@ -70,7 +73,7 @@ class NatureRemoLightSelect(CoordinatorEntity[NatureRemoCoordinator], SelectEnti
         self._attr_current_option: str | None = None
 
     @property
-    def device_info(self):
+    def device_info(self) -> DeviceInfo:
         return get_device_info(self._device)
 
     @callback
@@ -105,11 +108,11 @@ class NatureRemoLightSelect(CoordinatorEntity[NatureRemoCoordinator], SelectEnti
 class NatureRemoAcPresetSelect(CoordinatorEntity[NatureRemoCoordinator], SelectEntity):
     _attr_has_entity_name = True
     _attr_should_poll = False
+    _attr_translation_key = "ac_preset"
 
     def __init__(self, coordinator, appliance, device, api) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"nature_remo_ac_preset_{appliance['appliance_id']}"
-        self._attr_name = "Preset"
         self._appliance = appliance
         self._device = device
         self._appliance_id = appliance["appliance_id"]
@@ -119,7 +122,7 @@ class NatureRemoAcPresetSelect(CoordinatorEntity[NatureRemoCoordinator], SelectE
         self._hvac_mode = HVACMode.OFF
 
     @property
-    def device_info(self):
+    def device_info(self) -> DeviceInfo:
         return get_device_info(self._device)
 
     @callback

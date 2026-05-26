@@ -1,53 +1,60 @@
+from __future__ import annotations
+
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
     SensorStateClass,
 )
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from .coordinator import NatureRemoCoordinator
+
 from .const import DOMAIN
+from .coordinator import NatureRemoCoordinator
 from .entity import get_device_info
 
 
 SENSOR_TYPES = {
     "te": {
-        "name": "Temperature",
+        "translation_key": "temperature",
         "unit": "°C",
         "device_class": SensorDeviceClass.TEMPERATURE,
         "state_class": SensorStateClass.MEASUREMENT,
     },
     "hu": {
-        "name": "Humidity",
+        "translation_key": "humidity",
         "unit": "%",
         "device_class": SensorDeviceClass.HUMIDITY,
         "state_class": SensorStateClass.MEASUREMENT,
     },
     "il": {
-        "name": "Illuminance",
+        "translation_key": "illuminance",
         "unit": "lx",
         "device_class": SensorDeviceClass.ILLUMINANCE,
         "state_class": SensorStateClass.MEASUREMENT,
     },
     "pr": {
-        "name": "Pressure",
+        "translation_key": "pressure",
         "unit": "hPa",
         "device_class": SensorDeviceClass.ATMOSPHERIC_PRESSURE,
         "state_class": SensorStateClass.MEASUREMENT,
     },
     "buy_power": {
-        "name": "Buy Power",
+        "translation_key": "buy_power",
         "unit": "kWh",
         "device_class": SensorDeviceClass.ENERGY,
         "state_class": SensorStateClass.TOTAL_INCREASING,
     },
     "sold_power": {
-        "name": "Sold Power",
+        "translation_key": "sold_power",
         "unit": "kWh",
         "device_class": SensorDeviceClass.ENERGY,
         "state_class": SensorStateClass.TOTAL_INCREASING,
     },
     "current_power": {
-        "name": "Current Power",
+        "translation_key": "current_power",
         "unit": "W",
         "device_class": SensorDeviceClass.POWER,
         "state_class": SensorStateClass.MEASUREMENT,
@@ -55,11 +62,15 @@ SENSOR_TYPES = {
 }
 
 
-async def async_setup_entry(hass, entry, async_add_entities):
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
     coordinator: NatureRemoCoordinator = hass.data[DOMAIN][entry.entry_id][
         "coordinator"
     ]
-    entities = []
+    entities: list[SensorEntity] = []
 
     for appliance_id, data in coordinator.smart_meters.items():
         for key, desc in SENSOR_TYPES.items():
@@ -115,10 +126,17 @@ class NatureRemoSensor(CoordinatorEntity[NatureRemoCoordinator], SensorEntity):
     _attr_has_entity_name = True
     _attr_should_poll = False
 
-    def __init__(self, coordinator, appliance_id, device, key, description):
+    def __init__(
+        self,
+        coordinator: NatureRemoCoordinator,
+        appliance_id: str,
+        device: dict,
+        key: str,
+        description: dict,
+    ) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"nature_remo_sensor_{appliance_id}_{key}"
-        self._attr_name = description["name"]
+        self._attr_translation_key = description["translation_key"]
         self._device = device
         self._appliance_id = appliance_id
         self._attr_native_unit_of_measurement = description["unit"]
@@ -127,7 +145,7 @@ class NatureRemoSensor(CoordinatorEntity[NatureRemoCoordinator], SensorEntity):
         self._key = key
 
     @property
-    def device_info(self):
+    def device_info(self) -> DeviceInfo:
         return get_device_info(self._device)
 
     @property
@@ -144,14 +162,13 @@ class NatureRemoSensor(CoordinatorEntity[NatureRemoCoordinator], SensorEntity):
         return smart_meter.get(self._key)
 
     @property
-    def extra_state_attributes(self):
-        attributes = {}
-
+    def extra_state_attributes(self) -> dict[str, str]:
         if self._key == "il":
-            attributes["raw_sensor_scale"] = "0-200"
-            attributes["note"] = "This is a relative scale used by Nature Remo."
-
-        return attributes
+            return {
+                "raw_sensor_scale": "0-200",
+                "note": "Relative illuminance scale used by Nature Remo (not lux).",
+            }
+        return {}
 
 
 class NatureRemoMotionTimeSensor(
@@ -159,18 +176,23 @@ class NatureRemoMotionTimeSensor(
 ):
     _attr_has_entity_name = True
     _attr_should_poll = False
+    _attr_translation_key = "last_motion"
 
-    def __init__(self, coordinator, device_id, device):
+    def __init__(
+        self,
+        coordinator: NatureRemoCoordinator,
+        device_id: str,
+        device: dict,
+    ) -> None:
         super().__init__(coordinator)
         self._device_id = device_id
         self._device = device
-        self._attr_name = "Last Motion"
         self._attr_unique_id = f"nature_remo_{device_id}_last_motion"
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
         self._attr_native_unit_of_measurement = None
 
     @property
-    def device_info(self):
+    def device_info(self) -> DeviceInfo:
         return get_device_info(self._device)
 
     @property

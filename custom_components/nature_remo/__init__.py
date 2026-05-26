@@ -3,13 +3,39 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import ServiceValidationError
-from .api import NatureRemoAPI
-from .coordinator import NatureRemoCoordinator
 from homeassistant.helpers.update_coordinator import ConfigEntryAuthFailed
-from .const import DOMAIN, DEFAULT_UPDATE_INTERVAL, DEFAULT_MOTION_THRESHOLD_MINUTES, CONF_LOCAL_IP
+
+from .api import NatureRemoAPI
+from .const import (
+    CONF_LOCAL_IP,
+    DEFAULT_MOTION_THRESHOLD_MINUTES,
+    DEFAULT_UPDATE_INTERVAL,
+    DOMAIN,
+)
+from .coordinator import NatureRemoCoordinator
 
 _LOGGER = logging.getLogger(__name__)
-PLATFORMS = ["climate", "light", "sensor", "remote", "switch", "binary_sensor", "event", "button", "select"]
+PLATFORMS = [
+    "climate",
+    "light",
+    "sensor",
+    "remote",
+    "switch",
+    "binary_sensor",
+    "event",
+    "button",
+    "select",
+]
+
+
+def _entity_ids_from_service_call(call: ServiceCall) -> list[str]:
+    """Resolve entity IDs from service data (includes UI target fields)."""
+    entity_ids = call.data.get("entity_id")
+    if isinstance(entity_ids, str):
+        return [entity_ids]
+    if entity_ids:
+        return list(entity_ids)
+    return []
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -20,11 +46,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     local_ip = entry.options.get(CONF_LOCAL_IP, "")
     api = NatureRemoAPI(hass, entry.data["api_key"], local_ip=local_ip if local_ip else None)
 
-    MIN_UPDATE_INTERVAL = 10
-    update_interval = max(MIN_UPDATE_INTERVAL, int(entry.options.get("update_interval", DEFAULT_UPDATE_INTERVAL)))
+    min_update_interval = 10
+    update_interval = max(
+        min_update_interval,
+        int(entry.options.get("update_interval", DEFAULT_UPDATE_INTERVAL)),
+    )
     coordinator = NatureRemoCoordinator(hass, api, update_interval)
 
-    motion_threshold = int(entry.options.get("motion_threshold_minutes", DEFAULT_MOTION_THRESHOLD_MINUTES))
+    motion_threshold = int(
+        entry.options.get("motion_threshold_minutes", DEFAULT_MOTION_THRESHOLD_MINUTES)
+    )
     if motion_threshold < 1:
         motion_threshold = 1
     coordinator.motion_threshold_minutes = motion_threshold
@@ -41,32 +72,39 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     }
 
     async def handle_send_light_mode(call: ServiceCall):
-        entity_ids = call.data.get("entity_id")
-        if isinstance(entity_ids, str):
-            entity_ids = [entity_ids]
+        entity_ids = _entity_ids_from_service_call(call)
         if not entity_ids:
-            raise ServiceValidationError("entity_id is required")
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="entity_id_required",
+            )
         entity_id = entity_ids[0]
         mode = call.data.get("mode", "on")
 
         target_entry_data = None
         light_entity = None
         for entry_data in hass.data[DOMAIN].values():
-            coordinator = entry_data["coordinator"]
-            light_entity = coordinator.entity_map.get(entity_id)
+            entry_coordinator = entry_data["coordinator"]
+            light_entity = entry_coordinator.entity_map.get(entity_id)
             if light_entity is not None:
                 target_entry_data = entry_data
                 break
         else:
-            raise ServiceValidationError(f"{entity_id} not found")
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="entity_not_found",
+                translation_placeholders={"entity_id": entity_id},
+            )
 
         if mode not in light_entity.supported_effects:
             raise ServiceValidationError(
-                f"Effect '{mode}' is not supported"
+                translation_domain=DOMAIN,
+                translation_key="unsupported_effect",
+                translation_placeholders={"mode": mode},
             )
 
-        api = target_entry_data["api"]
-        await api.send_light_command(light_entity.appliance_id, mode)
+        entry_api = target_entry_data["api"]
+        await entry_api.send_light_command(light_entity.appliance_id, mode)
         light_entity.set_mode(mode)
 
         return {"status": "success", "appliance_id": light_entity.appliance_id}
@@ -75,22 +113,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         appliance_id = call.data.get("appliance_id")
 
         if not appliance_id:
-            raise ServiceValidationError("appliance_id is required")
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="appliance_id_required",
+            )
 
         target_api = None
         for entry_data in hass.data[DOMAIN].values():
-            coordinator = entry_data["coordinator"]
+            entry_coordinator = entry_data["coordinator"]
             if (
-                appliance_id in coordinator.aircons
-                or appliance_id in coordinator.lights
-                or appliance_id in coordinator.ir_remotes
+                appliance_id in entry_coordinator.aircons
+                or appliance_id in entry_coordinator.lights
+                or appliance_id in entry_coordinator.ir_remotes
             ):
                 target_api = entry_data["api"]
                 break
 
         if target_api is None:
             raise ServiceValidationError(
-                f"appliance_id '{appliance_id}' not found in any configured entry"
+                translation_domain=DOMAIN,
+                translation_key="appliance_not_found",
+                translation_placeholders={"appliance_id": appliance_id},
             )
 
         result = await target_api.learn_signal(appliance_id)

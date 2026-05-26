@@ -14,6 +14,9 @@ def get_device_info(device: dict) -> DeviceInfo:
         model="Nature Remo",
         sw_version=device.get("firmware_version", ""),
     )
+    serial = device.get("serial_number")
+    if serial:
+        info["serial_number"] = serial
     mac = device.get("mac_address")
     if mac:
         info["connections"] = {("mac", mac)}

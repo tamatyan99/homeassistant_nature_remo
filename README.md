@@ -173,13 +173,7 @@ The integration provides the following custom services under the `nature_remo` d
 
 ## Development & Contributing
 
-Contributions, bug reports, and feature requests are welcome!
-
-1. Fork this repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'feat: Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+Contributions, bug reports, and feature requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, testing, and pull request guidelines.
 
 Please open an issue first for significant changes or new features to discuss the approach.
 

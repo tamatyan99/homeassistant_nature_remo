@@ -55,18 +55,13 @@ class NatureRemoOptionsFlowHandler(config_entries.OptionsFlow):
 
             if nature_remo_device_id is None:
                 _LOGGER.warning(
-                    "デバイス '%s' のNature Remo device IDが見つかりません。スキップします。"
-                    " / Nature Remo device ID not found for device '%s'. Skipping.",
-                    name,
+                    "Nature Remo device ID not found for device '%s'; skipping",
                     name,
                 )
                 continue
 
             _LOGGER.debug(
-                "デバイス '%s' のNature Remo device ID: %s"
-                " / Nature Remo device ID for '%s': %s",
-                name,
-                nature_remo_device_id,
+                "Nature Remo device ID for '%s': %s",
                 name,
                 nature_remo_device_id,
             )

@@ -168,6 +168,53 @@ async def test_send_light_mode_service(hass):
     light_entity.set_mode.assert_called_once_with("night")
 
 
+async def test_send_light_mode_service_via_target(hass):
+    """Test send_light_mode service with entity_id from service target."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"api_key": "test_key"},
+        entry_id="test-entry-target",
+    )
+    entry.add_to_hass(hass)
+
+    light_entity = MagicMock()
+    light_entity.supported_effects = ["on", "night"]
+    light_entity.appliance_id = "light-1"
+    light_entity.set_mode = MagicMock()
+
+    coordinator_mock = MagicMock()
+    coordinator_mock.entity_map = {"light.test_light": light_entity}
+
+    api_mock = AsyncMock()
+    api_mock.get_devices = AsyncMock(return_value=[])
+    api_mock.get_appliances = AsyncMock(return_value=[])
+    api_mock.send_light_command = AsyncMock()
+
+    with patch(
+        "custom_components.nature_remo.NatureRemoAPI",
+        return_value=api_mock,
+    ), patch(
+        "custom_components.nature_remo.coordinator.NatureRemoCoordinator._async_update_data",
+        return_value={},
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        hass.data[DOMAIN][entry.entry_id]["coordinator"] = coordinator_mock
+        hass.data[DOMAIN][entry.entry_id]["api"] = api_mock
+
+        await hass.services.async_call(
+            DOMAIN,
+            "send_light_mode",
+            {"mode": "on"},
+            target={"entity_id": ["light.test_light"]},
+            blocking=True,
+        )
+
+    api_mock.send_light_command.assert_awaited_once_with("light-1", "on")
+    light_entity.set_mode.assert_called_once_with("on")
+
+
 async def test_send_light_mode_missing_entity_id(hass):
     """Test send_light_mode service raises error when entity_id is missing."""
     entry = MockConfigEntry(

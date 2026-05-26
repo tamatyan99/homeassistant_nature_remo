@@ -34,9 +34,85 @@
         "data": {
           "update_interval": "更新間隔（秒）",
           "motion_threshold_minutes": "モーション検出閾値（分）",
-          "local_ip": "Nature Remo ローカルIPアドレス"
+          "local_ip": "Nature Remo ローカルIPアドレス",
+          "external_temperature": "外部温度センサー",
+          "external_humidity": "外部湿度センサー"
         }
       }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "temperature": {
+        "name": "温度"
+      },
+      "humidity": {
+        "name": "湿度"
+      },
+      "illuminance": {
+        "name": "照度"
+      },
+      "pressure": {
+        "name": "気圧"
+      },
+      "buy_power": {
+        "name": "買電量"
+      },
+      "sold_power": {
+        "name": "売電量"
+      },
+      "current_power": {
+        "name": "瞬間電力"
+      },
+      "last_motion": {
+        "name": "最終モーション"
+      }
+    },
+    "binary_sensor": {
+      "motion": {
+        "name": "モーション"
+      }
+    },
+    "event": {
+      "motion": {
+        "name": "モーションイベント"
+      }
+    },
+    "button": {
+      "learn_signal": {
+        "name": "信号を学習"
+      },
+      "refresh_data": {
+        "name": "データを更新"
+      }
+    },
+    "select": {
+      "light_mode": {
+        "name": "モード"
+      },
+      "ac_preset": {
+        "name": "プリセット"
+      }
+    }
+  },
+  "exceptions": {
+    "entity_id_required": {
+      "message": "entity_id が必要です"
+    },
+    "entity_not_found": {
+      "message": "エンティティ {entity_id} が見つかりません"
+    },
+    "unsupported_effect": {
+      "message": "エフェクト '{mode}' はサポートされていません"
+    },
+    "appliance_id_required": {
+      "message": "appliance_id が必要です"
+    },
+    "appliance_not_found": {
+      "message": "appliance_id '{appliance_id}' は設定済みのエントリに見つかりません"
+    },
+    "learn_signal_failed": {
+      "message": "{entity} の信号学習に失敗しました"
     }
   },
   "services": {
