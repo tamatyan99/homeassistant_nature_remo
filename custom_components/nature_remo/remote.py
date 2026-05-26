@@ -88,7 +88,7 @@ class NatureRemoRemoteEntity(CoordinatorEntity[NatureRemoCoordinator], RemoteEnt
             if signal_id:
                 try:
                     await self._api.send_command_signal(signal_id)
-                except Exception as err:
+                except (ClientError, TimeoutError) as err:
                     failed.append(cmd)
                     _LOGGER.error("Failed to send command '%s': %s", cmd, err)
         if failed:

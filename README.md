@@ -23,6 +23,14 @@ Please use this integration **at your own risk**.
 
 ---
 
+## Fork Information
+
+This repository is a fork of [NaNaLinks/homeassistant_nature_remo](https://github.com/NaNaLinks/homeassistant_nature_remo) originally developed by [@nanosns](https://github.com/nanosns).
+
+While the original repository remains available, this fork was created to continue independent development with additional features, bug fixes, and ongoing maintenance. We appreciate the original author's work and maintain full respect for the original project.
+
+---
+
 ## Features
 
 - Control appliances (air conditioners, lights) registered to Nature Remo
@@ -174,6 +182,28 @@ Contributions, bug reports, and feature requests are welcome!
 5. Open a Pull Request
 
 Please open an issue first for significant changes or new features to discuss the approach.
+
+---
+
+## Troubleshooting
+
+### Authentication Error
+- Verify your API key is correct at [Nature Official Site](https://home.nature.global)
+- Ensure the token has not expired
+
+### Entity Not Appearing
+- Check that your appliances are properly registered in the Nature Remo app
+- Verify the integration has been reloaded after configuration changes
+
+### Rate Limit Errors
+- Nature Remo Cloud API has rate limits
+- Try increasing the update interval in the integration options
+- Avoid excessive manual refreshes
+
+### Local IP Connection Issues
+- Local API uses unencrypted HTTP communication
+- Ensure your Home Assistant and Nature Remo device are on the same network
+- The local IP option is only for IR signal sending; data fetching always uses the cloud API
 
 ---
 

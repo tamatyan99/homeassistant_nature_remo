@@ -8,20 +8,10 @@ send_light_mode:
     mode:
       name: Mode
       description: Select or input the desired mode (e.g., on, night).
-      required: true
-      example: night
       selector:
-        select:
-          options:
-            - 'on'
-            - 'on-100'
-            - 'on-favorite'
-            - 'night'
-            - 'bright-up'
-            - 'bright-down'
-            - 'colortemp-up'
-            - 'colortemp-down'
-          custom_value: true
+        text:
+  response:
+    optional: true
 
 learn_signal:
   name: Nature Remo Learn Signal
@@ -29,8 +19,9 @@ learn_signal:
   fields:
     appliance_id:
       name: Appliance ID
-      description: Appliance ID to learn a signal for
-      required: true
-      example: "abc123-def456"
+      description: Appliance ID to learn a signal for.
+      example: "12345-abc"
       selector:
-        text:
+        text: {}
+  response:
+    optional: true

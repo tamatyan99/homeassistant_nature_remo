@@ -51,6 +51,9 @@ class NatureRemoCoordinator(DataUpdateCoordinator):
                 raise UpdateFailed("Unexpected devices response from API")
             for device in devices:
                 device_id = device.get("id")
+                if device_id is None:
+                    _LOGGER.warning("Device without ID skipped")
+                    continue
                 name = device.get("name", "Unnamed")
                 newest_events = device.get("newest_events", {})
                 serial_number = device.get("serial_number", "")
@@ -110,6 +113,9 @@ class NatureRemoCoordinator(DataUpdateCoordinator):
             for appliance in appliances:
                 appliance_type = appliance.get("type")
                 appliance_id = appliance.get("id")
+                if appliance_id is None:
+                    _LOGGER.warning("Appliance without ID skipped")
+                    continue
                 nickname = appliance.get("nickname", "Unnamed")
                 device_info = {
                     "name": appliance.get("device", {}).get("name", "No Name"),

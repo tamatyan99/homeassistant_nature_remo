@@ -13,7 +13,7 @@ from .const import DOMAIN
 def _mask_device_data(data: dict) -> dict:
     """Return a copy of device data with PII masked."""
     masked = dict(data)
-    for key in ("serial_number", "mac_address"):
+    for key in ("serial_number", "mac_address", "name", "nickname"):
         if key in masked:
             masked[key] = "***"
     return masked
