@@ -12,6 +12,17 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS = ["climate", "light", "sensor", "remote", "switch", "binary_sensor", "event", "button", "select"]
 
 
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate config entry to the latest version."""
+    if entry.version > 1:
+        return False
+
+    if entry.minor_version < 2:
+        hass.config_entries.async_update_entry(entry, minor_version=2)
+
+    return True
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.debug("Setting up Nature Remo integration entry")
 

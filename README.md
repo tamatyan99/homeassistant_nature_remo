@@ -11,8 +11,7 @@
 This is a custom integration for linking Nature Remo devices with Home Assistant.  
 It enables you to control appliances like air conditioners and lights, and monitor temperature, humidity, and more directly in your smart home setup.
 
-This repository is a fork of [NaNaLinks/homeassistant_nature_remo](https://github.com/NaNaLinks/homeassistant_nature_remo) originally developed by [@nanosns](https://github.com/nanosns).  
-We appreciate the original author's work and continue development independently here.
+This repository is a fork of [NaNaLinks/homeassistant_nature_remo](https://github.com/NaNaLinks/homeassistant_nature_remo) originally developed by [@nanosns](https://github.com/nanosns). We appreciate the original author's work and continue development independently here.
 
 ---
 
@@ -20,14 +19,6 @@ We appreciate the original author's work and continue development independently 
 
 This is an **unofficial** integration and is not affiliated with Nature Inc. or Home Assistant.  
 Please use this integration **at your own risk**.
-
----
-
-## Fork Information
-
-This repository is a fork of [NaNaLinks/homeassistant_nature_remo](https://github.com/NaNaLinks/homeassistant_nature_remo) originally developed by [@nanosns](https://github.com/nanosns).
-
-While the original repository remains available, this fork was created to continue independent development with additional features, bug fixes, and ongoing maintenance. We appreciate the original author's work and maintain full respect for the original project.
 
 ---
 
@@ -41,7 +32,7 @@ While the original repository remains available, this fork was created to contin
 - Switch entities for appliances with on/off signals
 - Binary motion sensor with configurable detection threshold
 - External temperature and humidity sensor override for climate entities
-- Local API support for data retrieval (read-only; control commands always use the cloud API)
+- Optional local IP for faster IR signal sending (data fetching always uses the cloud API)
 
 ---
 
