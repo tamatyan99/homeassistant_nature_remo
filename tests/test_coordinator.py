@@ -49,6 +49,8 @@ class TestNatureRemoCoordinator:
                 "mac_address": "AA:BB:CC:DD:EE:FF",
             }
         }
+        assert "dev-1" in coordinator.motion_sensors
+        assert coordinator.motion_sensors["dev-1"]["is_active"] is False
         assert result == {}
 
     async def test_async_update_data_raises_update_failed_on_bad_devices(
@@ -120,7 +122,7 @@ class TestNatureRemoCoordinator:
         assert coordinator.smart_meters["app-1"]["name"] == "Smart Meter"
         assert coordinator.smart_meters["app-1"]["current_power"] == 0
 
-    async def test_invalid_timestamp_not_in_motion_sensors(self, hass, mock_api):
+    async def test_invalid_timestamp_creates_inactive_motion_sensor(self, hass, mock_api):
         mock_api.get_devices = AsyncMock(
             return_value=[
                 {
@@ -138,7 +140,9 @@ class TestNatureRemoCoordinator:
         coordinator = NatureRemoCoordinator(hass, mock_api, update_interval=60)
         await coordinator._async_update_data()
 
-        assert "dev-1" not in coordinator.motion_sensors
+        assert "dev-1" in coordinator.motion_sensors
+        assert coordinator.motion_sensors["dev-1"]["last_motion"] is None
+        assert coordinator.motion_sensors["dev-1"]["is_active"] is False
 
     async def test_motion_sensor_active(self, hass, mock_api):
         now = datetime.now(timezone.utc)

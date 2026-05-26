@@ -191,13 +191,14 @@ async def test_send_light_mode_missing_entity_id(hass):
         await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
 
-    with pytest.raises(ServiceValidationError, match="entity_id is required"):
+    with pytest.raises(ServiceValidationError) as exc_info:
         await hass.services.async_call(
             DOMAIN,
             "send_light_mode",
             {"mode": "on"},
             blocking=True,
         )
+    assert exc_info.value.translation_key == "missing_entity_id"
 
 
 async def test_learn_signal_service(hass):

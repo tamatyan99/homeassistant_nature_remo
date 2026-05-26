@@ -6,6 +6,7 @@ from typing import Any
 from aiohttp import ClientError
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -40,20 +41,21 @@ async def async_setup_entry(
             )
         )
 
-    for device_info in coordinator.devices.values():
+    if coordinator.devices:
         entities.append(
             NatureRemoRefreshDataButton(
                 coordinator=coordinator,
-                device_info=device_info,
+                device_info=next(iter(coordinator.devices.values())),
             )
         )
 
-    async_add_entities(entities, True)
+    async_add_entities(entities)
 
 
 class NatureRemoLearnSignalButton(CoordinatorEntity[NatureRemoCoordinator], ButtonEntity):
     """Button to learn a new IR signal for an appliance."""
 
+    _attr_entity_category = EntityCategory.CONFIG
     _attr_icon = "mdi:remote"
     _attr_has_entity_name = True
     _attr_should_poll = False
@@ -86,8 +88,9 @@ class NatureRemoLearnSignalButton(CoordinatorEntity[NatureRemoCoordinator], Butt
 
 
 class NatureRemoRefreshDataButton(CoordinatorEntity[NatureRemoCoordinator], ButtonEntity):
-    """Button to manually refresh coordinator data."""
+    """Button to manually refresh coordinator data for all devices."""
 
+    _attr_entity_category = EntityCategory.CONFIG
     _attr_icon = "mdi:refresh"
     _attr_has_entity_name = True
     _attr_should_poll = False
@@ -98,7 +101,7 @@ class NatureRemoRefreshDataButton(CoordinatorEntity[NatureRemoCoordinator], Butt
         device_info: dict[str, Any],
     ) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = f"nature_remo_refresh_{device_info['device_id']}"
+        self._attr_unique_id = "nature_remo_refresh_data"
         self._attr_name = "Refresh Data"
         self._device = device_info
 

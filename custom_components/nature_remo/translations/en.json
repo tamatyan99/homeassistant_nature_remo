@@ -34,7 +34,7 @@
         "data": {
           "update_interval": "Update Interval (seconds)",
           "motion_threshold_minutes": "Motion Detection Threshold (minutes)",
-          "local_ip": "Nature Remo Local IP Address"
+          "local_ip": "Nature Remo Local IP Address (reserved for future use)"
         }
       }
     }
@@ -63,6 +63,26 @@
           "description": "Appliance ID to learn a signal for."
         }
       }
+    }
+  },
+  "exceptions": {
+    "missing_entity_id": {
+      "message": "A light entity must be selected."
+    },
+    "entity_not_found": {
+      "message": "Light entity {entity_id} was not found."
+    },
+    "unsupported_mode": {
+      "message": "Mode {mode} is not supported by this light."
+    },
+    "missing_appliance_id": {
+      "message": "appliance_id is required."
+    },
+    "appliance_not_found": {
+      "message": "Appliance {appliance_id} was not found."
+    },
+    "send_command_failed": {
+      "message": "Failed to send commands: {commands}"
     }
   }
 }

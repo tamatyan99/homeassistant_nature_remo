@@ -34,14 +34,14 @@ While the original repository remains available, this fork was created to contin
 ## Features
 
 - Control appliances (air conditioners, lights) registered to Nature Remo
-- Retrieve temperature, humidity, illuminance, atmospheric pressure, and motion sensor data
+- Retrieve temperature, humidity, relative illuminance, atmospheric pressure, and motion sensor data
 - Access smart meter data (consumption, generation, instant power) via Nature Remo E / E Lite
 - Control lighting modes using custom service calls
 - Send IR commands using remote entities created from defined signals
 - Switch entities for appliances with on/off signals
 - Binary motion sensor with configurable detection threshold
 - External temperature and humidity sensor override for climate entities
-- Local API support for data retrieval (read-only; control commands always use the cloud API)
+- Optional local IP setting (reserved for future local API features; all data and control currently use the cloud API)
 
 ---
 
@@ -89,7 +89,7 @@ Click the button below to easily add this repository to HACS.
   - Choices: `30`, `60`, `90` (default: `60`)
 - You can select the motion detection threshold from preset choices (minutes)
   - Choices: `1`, `3`, `5`, `10`, `15` (default: `5`)
-- You can configure a local IP address to communicate directly with your Nature Remo device
+- You can configure a local IP address (reserved for future local API support)
 - You can assign external temperature and humidity sensors per device
 
 ⚠️ Nature Remo Cloud API has rate limits.  
@@ -103,9 +103,9 @@ Setting a very short update interval may cause the integration to reach the API 
 |---------------|--------------------------------------------------------------------|
 | climate       | Control air conditioners (cooling, heating, dry, fan-only, auto, eco preset) |
 | light         | Control lights (on/off, mode selection, effects)                   |
-| sensor        | Temperature, humidity, illuminance, pressure, power (buy/sell/instant), motion timestamp |
+| sensor        | Temperature, humidity, relative illuminance (0–200 scale), pressure, power (buy/sell/instant), motion timestamp |
 | remote        | Send infrared signals or turn on/off for IR/AC/LIGHT types        |
-| switch        | On/off toggle for appliances with power signals                    |
+| switch        | On/off toggle for appliances with power signals (state is optimistic; resets on restart) |
 | binary_sensor | Motion detection with configurable timeout                         |
 | event         | Motion detected events for automations                             |
 | button        | Learn IR signal, refresh data                                      |
@@ -129,7 +129,7 @@ service: remote.send_command
 target:
   entity_id: remote.living_room_remote  # Your remote entity ID
 data:
-  command: "Power On"  # The name of the signal as defined in Remo
+  command: "power on"  # Signal name as defined in Remo (case-insensitive)
 ```
 
 ---
@@ -200,10 +200,9 @@ Please open an issue first for significant changes or new features to discuss th
 - Try increasing the update interval in the integration options
 - Avoid excessive manual refreshes
 
-### Local IP Connection Issues
-- Local API uses unencrypted HTTP communication
-- Ensure your Home Assistant and Nature Remo device are on the same network
-- The local IP option is only for IR signal sending; data fetching always uses the cloud API
+### Local IP Option
+- The local IP option is reserved for future features and does not change current behavior
+- All device data and appliance control use the Nature Remo cloud API today
 
 ---
 

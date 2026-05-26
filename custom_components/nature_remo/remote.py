@@ -37,7 +37,7 @@ async def async_setup_entry(
         for remote_info in coordinator.ir_remotes.values()
     ]
 
-    async_add_entities(entities, True)
+    async_add_entities(entities)
 
 
 class NatureRemoRemoteEntity(CoordinatorEntity[NatureRemoCoordinator], RemoteEntity):
@@ -52,14 +52,14 @@ class NatureRemoRemoteEntity(CoordinatorEntity[NatureRemoCoordinator], RemoteEnt
     ) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"nature_remo_remote_{remote_info['appliance_id']}"
-        self._attr_name = None
+        self._attr_name = remote_info["name"]
         self._api = api
         self._device = remote_info["device"]
         self._appliance_id = remote_info["appliance_id"]
         self._remote_info = remote_info
         self._commands = {s["name"].lower(): s["id"] for s in remote_info["signals"]}
 
-        self._attr_state = "off"
+        self._attr_is_on = False
         self._power_on_id = next(
             (self._commands[c] for c in ON_COMMANDS if c in self._commands), None
         )
@@ -88,7 +88,7 @@ class NatureRemoRemoteEntity(CoordinatorEntity[NatureRemoCoordinator], RemoteEnt
     def extra_state_attributes(self) -> dict[str, Any]:
         return {
             "available_commands": list(self._commands.keys()),
-            "command": self._attr_state,
+            "power": "on" if self._attr_is_on else "off",
         }
 
     @property
@@ -96,24 +96,30 @@ class NatureRemoRemoteEntity(CoordinatorEntity[NatureRemoCoordinator], RemoteEnt
         return super().available and bool(self._commands)
 
     async def async_send_command(self, command: list[str], **kwargs: Any) -> None:
-        failed = []
+        failed: list[str] = []
         for cmd in command:
-            signal_id = self._commands.get(cmd)
-            if signal_id:
-                try:
-                    await self._api.send_command_signal(signal_id)
-                except (ClientError, TimeoutError) as err:
-                    failed.append(cmd)
-                    _LOGGER.error("Failed to send command '%s': %s", cmd, err)
+            signal_id = self._commands.get(cmd.lower())
+            if not signal_id:
+                failed.append(cmd)
+                continue
+            try:
+                await self._api.send_command_signal(signal_id)
+            except (ClientError, TimeoutError) as err:
+                failed.append(cmd)
+                _LOGGER.error("Failed to send command '%s': %s", cmd, err)
         if failed:
-            raise ServiceValidationError(f"Failed to send commands: {', '.join(failed)}")
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="send_command_failed",
+                translation_placeholders={"commands": ", ".join(failed)},
+            )
         self.async_write_ha_state()
 
     async def async_turn_on(self) -> None:
         if self._power_on_id:
             try:
                 await self._api.send_command_signal(self._power_on_id)
-                self._attr_state = "on"
+                self._attr_is_on = True
                 self.async_write_ha_state()
             except (ClientError, TimeoutError):
                 _LOGGER.error("Failed to send power ON command")
@@ -127,7 +133,7 @@ class NatureRemoRemoteEntity(CoordinatorEntity[NatureRemoCoordinator], RemoteEnt
         if self._power_off_id:
             try:
                 await self._api.send_command_signal(self._power_off_id)
-                self._attr_state = "off"
+                self._attr_is_on = False
                 self.async_write_ha_state()
             except (ClientError, TimeoutError):
                 _LOGGER.error("Failed to send power OFF command")

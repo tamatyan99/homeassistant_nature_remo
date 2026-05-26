@@ -37,7 +37,7 @@ async def async_setup_entry(
     if not entities:
         _LOGGER.warning("No light appliances matched selected IDs.")
 
-    async_add_entities(entities, True)
+    async_add_entities(entities)
 
 
 class NatureRemoLight(CoordinatorEntity[NatureRemoCoordinator], LightEntity):
@@ -48,7 +48,7 @@ class NatureRemoLight(CoordinatorEntity[NatureRemoCoordinator], LightEntity):
     def __init__(self, coordinator, appliance, device, api) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"nature_remo_light_{appliance['appliance_id']}"
-        self._attr_name = None
+        self._attr_name = appliance["name"]
         self._appliance = appliance
         self._device = device
         self._appliance_id = appliance["appliance_id"]

@@ -51,7 +51,7 @@ async def async_setup_entry(
     if not entities:
         _LOGGER.warning("No select appliances matched selected IDs.")
 
-    async_add_entities(entities, True)
+    async_add_entities(entities)
 
 
 class NatureRemoLightSelect(CoordinatorEntity[NatureRemoCoordinator], SelectEntity):
@@ -124,6 +124,8 @@ class NatureRemoAcPresetSelect(CoordinatorEntity[NatureRemoCoordinator], SelectE
 
     @callback
     def _handle_coordinator_update(self) -> None:
+        if self.coordinator.data is None:
+            return
         appliance = self.coordinator.data.get(self._appliance_id, {})
         if appliance and "settings" in appliance:
             settings = appliance["settings"]
@@ -161,6 +163,8 @@ class NatureRemoAcPresetSelect(CoordinatorEntity[NatureRemoCoordinator], SelectE
             operation_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
             if operation_mode is None:
                 raise HomeAssistantError(f"Invalid HVAC mode: {self._hvac_mode}")
+            if self.coordinator.data is None:
+                raise HomeAssistantError("Appliance data is not available yet")
             appliance = self.coordinator.data.get(self._appliance_id, {})
             temp = appliance.get("settings", {}).get("temp", "25") if appliance else "25"
             payload = {

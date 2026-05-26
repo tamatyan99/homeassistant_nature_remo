@@ -34,7 +34,7 @@
         "data": {
           "update_interval": "更新間隔（秒）",
           "motion_threshold_minutes": "モーション検出閾値（分）",
-          "local_ip": "Nature Remo ローカルIPアドレス"
+          "local_ip": "Nature Remo ローカルIPアドレス（将来の機能用）"
         }
       }
     }
@@ -63,6 +63,26 @@
           "description": "信号を学習するアプライアンスのID。"
         }
       }
+    }
+  },
+  "exceptions": {
+    "missing_entity_id": {
+      "message": "ライトエンティティを選択してください。"
+    },
+    "entity_not_found": {
+      "message": "ライトエンティティ {entity_id} が見つかりません。"
+    },
+    "unsupported_mode": {
+      "message": "モード {mode} はこのライトではサポートされていません。"
+    },
+    "missing_appliance_id": {
+      "message": "appliance_id が必要です。"
+    },
+    "appliance_not_found": {
+      "message": "アプライアンス {appliance_id} が見つかりません。"
+    },
+    "send_command_failed": {
+      "message": "コマンドの送信に失敗しました: {commands}"
     }
   }
 }

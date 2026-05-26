@@ -24,8 +24,8 @@ SENSOR_TYPES = {
     },
     "il": {
         "name": "Illuminance",
-        "unit": "lx",
-        "device_class": SensorDeviceClass.ILLUMINANCE,
+        "unit": None,
+        "device_class": None,
         "state_class": SensorStateClass.MEASUREMENT,
     },
     "pr": {
@@ -108,7 +108,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
             )
         )
 
-    async_add_entities(entities, True)
+    async_add_entities(entities)
 
 
 class NatureRemoSensor(CoordinatorEntity[NatureRemoCoordinator], SensorEntity):
@@ -121,8 +121,10 @@ class NatureRemoSensor(CoordinatorEntity[NatureRemoCoordinator], SensorEntity):
         self._attr_name = description["name"]
         self._device = device
         self._appliance_id = appliance_id
-        self._attr_native_unit_of_measurement = description["unit"]
-        self._attr_device_class = description["device_class"]
+        if description["unit"] is not None:
+            self._attr_native_unit_of_measurement = description["unit"]
+        if description["device_class"] is not None:
+            self._attr_device_class = description["device_class"]
         self._attr_state_class = description["state_class"]
         self._key = key
 

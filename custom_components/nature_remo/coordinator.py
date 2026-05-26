@@ -60,6 +60,8 @@ class NatureRemoCoordinator(DataUpdateCoordinator):
                 mac_address = device.get("mac_address", "")
 
                 motion_event = newest_events.get("mo")
+                last_motion = None
+                is_active = False
                 if motion_event and isinstance(motion_event, dict):
                     created_at_str = motion_event.get("created_at")
                     if created_at_str:
@@ -75,19 +77,21 @@ class NatureRemoCoordinator(DataUpdateCoordinator):
                             )
                             created_at = None
                         if created_at is not None:
+                            last_motion = created_at
                             now = dt_now(created_at.tzinfo)
                             is_active = (now - created_at) < timedelta(
                                 minutes=self.motion_threshold_minutes
                             )
-                            new_motion_sensors[device_id] = {
-                                "name": name,
-                                "device_id": device_id,
-                                "last_motion": created_at,
-                                "is_active": is_active,
-                                "firmware_version": device.get("firmware_version", ""),
-                                "serial_number": serial_number,
-                                "mac_address": mac_address,
-                            }
+
+                new_motion_sensors[device_id] = {
+                    "name": name,
+                    "device_id": device_id,
+                    "last_motion": last_motion,
+                    "is_active": is_active,
+                    "firmware_version": device.get("firmware_version", ""),
+                    "serial_number": serial_number,
+                    "mac_address": mac_address,
+                }
 
                 new_devices[device_id] = {
                     "name": name,
@@ -117,18 +121,15 @@ class NatureRemoCoordinator(DataUpdateCoordinator):
                     _LOGGER.warning("Appliance without ID skipped")
                     continue
                 nickname = appliance.get("nickname", "Unnamed")
+                raw_device = appliance.get("device", {})
+                device_id = raw_device.get("id") or raw_device.get("serial_number", "")
                 device_info = {
-                    "name": appliance.get("device", {}).get("name", "No Name"),
-                    "device_id": appliance.get("device", {}).get("id", ""),
-                    "firmware_version": appliance.get("device", {}).get(
-                        "firmware_version", ""
-                    ),
-                    "serial_number": appliance.get("device", {}).get(
-                        "serial_number", ""
-                    ),
-                    "mac_address": appliance.get("device", {}).get(
-                        "mac_address", ""
-                    ),
+                    "name": raw_device.get("name", "No Name"),
+                    "device_id": device_id,
+                    "firmware_version": raw_device.get("firmware_version", ""),
+                    "serial_number": raw_device.get("serial_number", ""),
+                    "mac_address": raw_device.get("mac_address", ""),
+                    "model": raw_device.get("model", "Nature Remo"),
                 }
                 appliance_info = {
                     "name": nickname,

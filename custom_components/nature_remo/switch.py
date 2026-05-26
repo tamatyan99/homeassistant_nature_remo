@@ -42,7 +42,7 @@ async def async_setup_entry(
                 )
             )
 
-    async_add_entities(entities, True)
+    async_add_entities(entities)
 
 
 class NatureRemoSwitchEntity(CoordinatorEntity[NatureRemoCoordinator], SwitchEntity):
@@ -58,7 +58,7 @@ class NatureRemoSwitchEntity(CoordinatorEntity[NatureRemoCoordinator], SwitchEnt
     ) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"nature_remo_switch_{remote_info['appliance_id']}"
-        self._attr_name = None
+        self._attr_name = remote_info["name"]
         self._api = api
         self._device = remote_info["device"]
         self._appliance_id = remote_info["appliance_id"]
