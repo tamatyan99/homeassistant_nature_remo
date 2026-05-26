@@ -12,6 +12,13 @@
 - **Never commit `venv/`** — The virtual environment is local-only and already excluded in `.gitignore`.
 - **Run tests** with `python -m pytest tests/ -v` before committing test-related changes.
 - **Bump `manifest.json` version** on every release to force Home Assistant cache invalidation.
+- **GitHub tag workflow** (for HACS):
+  1. Update `manifest.json` version, commit, and push to `main`.
+  2. Create a new lightweight tag: `git tag vX.Y.Z`
+  3. Push the tag: `git push origin vX.Y.Z`
+  4. If a tag already exists and must be moved, delete it locally and remotely first:
+     `git tag -d vX.Y.Z && git push origin :refs/tags/vX.Y.Z && git tag vX.Y.Z && git push origin vX.Y.Z`
+  5. Avoid force-pushing tags whenever possible to prevent breaking downstream HACS caches.
 - **Delete `__pycache__`** in `custom_components/nature_remo/` after major refactors before restarting HA, to avoid stale bytecode errors.
 
 ## Cursor Cloud specific instructions
