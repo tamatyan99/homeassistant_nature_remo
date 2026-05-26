@@ -8,6 +8,7 @@ from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.core import callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -73,6 +74,19 @@ class NatureRemoSwitchEntity(CoordinatorEntity[NatureRemoCoordinator], SwitchEnt
     @property
     def device_info(self):
         return get_device_info(self._device)
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        remote_info = self.coordinator.ir_remotes.get(self._appliance_id)
+        if remote_info:
+            self._commands = {s["name"].lower(): s["id"] for s in remote_info["signals"]}
+            self._power_on_id = next(
+                (self._commands[c] for c in ON_COMMANDS if c in self._commands), None
+            )
+            self._power_off_id = next(
+                (self._commands[c] for c in OFF_COMMANDS if c in self._commands), None
+            )
+        super()._handle_coordinator_update()
 
     @property
     def available(self) -> bool:

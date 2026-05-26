@@ -1,10 +1,8 @@
 """Shared entity helpers for Nature Remo integration."""
 
 from homeassistant.helpers.device_registry import DeviceInfo
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
-from .coordinator import NatureRemoCoordinator
 
 
 def get_device_info(device: dict) -> DeviceInfo:
@@ -20,14 +18,3 @@ def get_device_info(device: dict) -> DeviceInfo:
     if mac:
         info["connections"] = {("mac", mac)}
     return info
-
-
-class NatureRemoBaseEntity(CoordinatorEntity[NatureRemoCoordinator]):
-    """Base entity for Nature Remo."""
-
-    _attr_should_poll = False
-
-    def __init__(self, coordinator: NatureRemoCoordinator, appliance_id: str) -> None:
-        super().__init__(coordinator)
-        self.appliance_id = appliance_id
-        self._attr_unique_id = f"nature_remo_{appliance_id}"

@@ -147,7 +147,7 @@ class NatureRemoAcPresetSelect(CoordinatorEntity[NatureRemoCoordinator], SelectE
         if option == "eco":
             operation_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
             if operation_mode is None:
-                return
+                raise HomeAssistantError(f"Invalid HVAC mode: {self._hvac_mode}")
             payload = {"button": "eco", "temperature": "26"}
             prev_option = self._attr_current_option
             try:
@@ -160,9 +160,7 @@ class NatureRemoAcPresetSelect(CoordinatorEntity[NatureRemoCoordinator], SelectE
         else:
             operation_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
             if operation_mode is None:
-                self._attr_current_option = None
-                self.async_write_ha_state()
-                return
+                raise HomeAssistantError(f"Invalid HVAC mode: {self._hvac_mode}")
             appliance = self.coordinator.data.get(self._appliance_id, {})
             temp = appliance.get("settings", {}).get("temp", "25") if appliance else "25"
             payload = {
@@ -172,7 +170,7 @@ class NatureRemoAcPresetSelect(CoordinatorEntity[NatureRemoCoordinator], SelectE
             prev_option = self._attr_current_option
             try:
                 await self._api.send_command_climate(payload, self._appliance_id)
-                self._attr_current_option = None
+                self._attr_current_option = "none"
             except (ClientError, TimeoutError):
                 self._attr_current_option = prev_option
                 self.async_write_ha_state()

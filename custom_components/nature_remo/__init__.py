@@ -5,7 +5,8 @@ from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import ServiceValidationError
 from .api import NatureRemoAPI
 from .coordinator import NatureRemoCoordinator
-from .const import DOMAIN, DEFAULT_UPDATE_INTERVAL, DEFAULT_MOTION_THRESHOLD_MINUTES
+from homeassistant.helpers.update_coordinator import ConfigEntryAuthFailed
+from .const import DOMAIN, DEFAULT_UPDATE_INTERVAL, DEFAULT_MOTION_THRESHOLD_MINUTES, CONF_LOCAL_IP
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS = ["climate", "light", "sensor", "remote", "switch", "binary_sensor", "event", "button", "select"]
@@ -16,7 +17,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data.setdefault(DOMAIN, {})
 
-    local_ip = entry.options.get("local_ip", "")
+    local_ip = entry.options.get(CONF_LOCAL_IP, "")
     api = NatureRemoAPI(hass, entry.data["api_key"], local_ip=local_ip if local_ip else None)
 
     MIN_UPDATE_INTERVAL = 10
@@ -28,7 +29,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         motion_threshold = 1
     coordinator.motion_threshold_minutes = motion_threshold
 
-    await coordinator.async_config_entry_first_refresh()
+    try:
+        await coordinator.async_config_entry_first_refresh()
+    except ConfigEntryAuthFailed:
+        await entry.async_start_reauth(hass)
+        return False
 
     hass.data[DOMAIN][entry.entry_id] = {
         "coordinator": coordinator,
@@ -118,6 +123,8 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    coordinator: NatureRemoCoordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
+    await coordinator.async_shutdown()
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)

@@ -44,10 +44,6 @@
       "name": "Nature Remo Light Mode",
       "description": "Send command to the selected light using button name.",
       "fields": {
-        "entity_id": {
-          "name": "Entity",
-          "description": "The light entity to control."
-        },
         "mode": {
           "name": "Mode",
           "description": "Select or input the desired mode (e.g., on, night)."

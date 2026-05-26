@@ -11,6 +11,7 @@ from homeassistant.components.climate import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -413,8 +414,7 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
     async def async_set_hvac_mode(self, hvac_mode):
         _LOGGER.info("Setting HVAC mode: %s", hvac_mode)
         if hvac_mode not in self.hvac_modes:
-            _LOGGER.warning("Unsupported HVAC mode: %s", hvac_mode)
-            return
+            raise HomeAssistantError(f"Unsupported HVAC mode: {hvac_mode}")
 
         prev_button = self._button
         prev_hvac_mode = self._hvac_mode
@@ -459,13 +459,11 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
     async def async_set_temperature(self, **kwargs):
         temperature = kwargs.get(ATTR_TEMPERATURE)
         if temperature is None:
-            _LOGGER.warning("Temperature not specified!")
-            return
+            raise HomeAssistantError("Temperature not specified")
 
         operation_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
         if operation_mode is None:
-            _LOGGER.error("Invalid HVAC mode: %s", self._hvac_mode)
-            return
+            raise HomeAssistantError(f"Invalid HVAC mode: {self._hvac_mode}")
 
         _LOGGER.debug("Setting temperature to: %s", temperature)
 
@@ -498,8 +496,7 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
     async def async_set_fan_mode(self, fan_mode: str) -> None:
         operation_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
         if operation_mode is None:
-            _LOGGER.error("Invalid HVAC mode: %s", self._hvac_mode)
-            return
+            raise HomeAssistantError(f"Invalid HVAC mode: {self._hvac_mode}")
 
         payload = {
             "operation_mode": operation_mode,
@@ -523,8 +520,7 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
     async def async_set_swing_mode(self, swing_mode: str) -> None:
         operation_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
         if operation_mode is None:
-            _LOGGER.error("Invalid HVAC mode: %s", self._hvac_mode)
-            return
+            raise HomeAssistantError(f"Invalid HVAC mode: {self._hvac_mode}")
 
         payload = {
             "operation_mode": operation_mode,
