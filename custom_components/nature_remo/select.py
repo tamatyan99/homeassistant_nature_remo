@@ -72,10 +72,6 @@ class NatureRemoLightSelect(CoordinatorEntity[NatureRemoCoordinator], SelectEnti
     def device_info(self):
         return get_device_info(self._device)
 
-    @property
-    def available(self) -> bool:
-        return self.coordinator.last_update_success
-
     @callback
     def _handle_coordinator_update(self) -> None:
         if self.coordinator.data is None:
@@ -120,21 +116,7 @@ class NatureRemoAcPresetSelect(CoordinatorEntity[NatureRemoCoordinator], SelectE
 
     @property
     def device_info(self):
-        info = {
-            "identifiers": {(DOMAIN, self._device["device_id"])},
-            "name": self._device["name"],
-            "manufacturer": "Nature",
-            "model": self._device.get("firmware_version") or "Nature Remo",
-            "sw_version": self._device.get("firmware_version", ""),
-        }
-        mac = self._device.get("mac_address")
-        if mac:
-            info["connections"] = {("mac", mac)}
-        return info
-
-    @property
-    def available(self) -> bool:
-        return self.coordinator.last_update_success
+        return get_device_info(self._device)
 
     @callback
     def _handle_coordinator_update(self) -> None:

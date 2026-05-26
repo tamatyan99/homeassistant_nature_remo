@@ -122,7 +122,7 @@ class NatureRemoLight(CoordinatorEntity[NatureRemoCoordinator], LightEntity):
             effect_buttons = appliance["light"].get("buttons", [])
             self._supported_effects = [btn["name"] for btn in effect_buttons]
             _LOGGER.debug(
-                "[%s] 有効ボタン: %s", self._attr_name, self._supported_effects
+                "[%s] Available buttons: %s", self._attr_name, self._supported_effects
             )
 
         self.async_write_ha_state()

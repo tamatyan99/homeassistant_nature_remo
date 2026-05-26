@@ -46,6 +46,38 @@ class NatureRemoAPI:
             reset_time,
         )
 
+    async def _request(
+        self,
+        method: str,
+        path: str,
+        data: dict | None = None,
+        json_payload: dict | None = None,
+        use_local: bool = False,
+    ) -> dict:
+        """Send an HTTP request to the Nature Remo API with common error handling."""
+        headers = {"Authorization": f"Bearer {self._token}"}
+        base_url = self._get_base_url() if use_local else NATURE_REMO_CLOUD_URL
+        url = f"{base_url}{path}"
+
+        async with self._session.request(
+            method, url, headers=headers, data=data, json=json_payload
+        ) as response:
+            self._log_rate_limits(response)
+
+            if response.status == 401:
+                _LOGGER.error("Authentication failed: invalid API token")
+                raise NatureRemoAuthError(
+                    "API request failed with status 401 (Unauthorized)"
+                )
+
+            if response.status == 200:
+                return await response.json()
+
+            text = await response.text()
+            raise ClientError(
+                f"API request failed with status {response.status}: {text}"
+            )
+
     async def _get(self, path: str):
         headers = {"Authorization": f"Bearer {self._token}"}
         # Data fetching always uses the cloud API; local IP is only for IR control
@@ -127,25 +159,11 @@ class NatureRemoAPI:
 
     async def send_command_climate(self, payload, appliance_id):
         _LOGGER.info("Setting payload: %s", payload)
-        headers = {"Authorization": f"Bearer {self._token}"}
-        api_url = f"{NATURE_REMO_CLOUD_URL}/appliances/{appliance_id}/aircon_settings"
-
+        path = f"/appliances/{appliance_id}/aircon_settings"
         try:
-            async with self._session.post(
-                api_url, headers=headers, data=payload
-            ) as response:
-                self._log_rate_limits(response)
-
-                if response.status == 200:
-                    response_json = await response.json()
-                    _LOGGER.info("Climate command succeeded: %s", response_json)
-                    return response_json
-
-                text = await response.text()
-                _LOGGER.error(
-                    "Climate command failed: %s - %s", response.status, text
-                )
-                raise ClientError(f"Climate command failed: {response.status}")
+            result = await self._request("POST", path, data=payload)
+            _LOGGER.info("Climate command succeeded: %s", result)
+            return result
         except (ClientError, TimeoutError) as err:
             _LOGGER.error("Climate command failed: %s", err)
             raise ClientError(f"Climate command failed: {err}") from err
@@ -154,51 +172,22 @@ class NatureRemoAPI:
         _LOGGER.info(
             "Send Light appliance_id: %s command: %s", appliance_id, command
         )
-        url = f"{NATURE_REMO_CLOUD_URL}/appliances/{appliance_id}/light"
-        headers = {"Authorization": f"Bearer {self._token}"}
+        path = f"/appliances/{appliance_id}/light"
         payload = {"button": command}
-
         try:
-            async with self._session.post(
-                url, headers=headers, data=payload
-            ) as response:
-                self._log_rate_limits(response)
-
-                if response.status == 200:
-                    response_json = await response.json()
-                    _LOGGER.info("Light command succeeded: %s", response_json)
-                    return response_json
-
-                text = await response.text()
-                _LOGGER.error(
-                    "Nature Remo API Error: %s - %s", response.status, text
-                )
-                raise ClientError(f"Light command failed: {response.status}")
+            result = await self._request("POST", path, data=payload)
+            _LOGGER.info("Light command succeeded: %s", result)
+            return result
         except (ClientError, TimeoutError) as err:
             _LOGGER.error("Light command failed: %s", err)
             raise ClientError(f"Light command failed: {err}") from err
 
     async def learn_signal(self, appliance_id: str) -> dict:
-        api_url = f"{NATURE_REMO_CLOUD_URL}/appliances/{appliance_id}/IR"
-        headers = {"Authorization": f"Bearer {self._token}"}
-
+        path = f"/appliances/{appliance_id}/IR"
         try:
-            async with self._session.post(api_url, headers=headers) as response:
-                self._log_rate_limits(response)
-
-                if response.status == 200:
-                    response_json = await response.json()
-                    _LOGGER.info("Signal learned successfully: %s", appliance_id)
-                    return response_json
-
-                text = await response.text()
-                _LOGGER.error(
-                    "Signal learn failed for %s: %s - %s",
-                    appliance_id,
-                    response.status,
-                    text,
-                )
-                raise ClientError(f"Signal learn failed: {response.status}")
+            result = await self._request("POST", path)
+            _LOGGER.info("Signal learned successfully: %s", appliance_id)
+            return result
         except (ClientError, TimeoutError) as err:
             _LOGGER.error("Signal learn failed: %s", err)
             raise ClientError(f"Signal learn failed: {err}") from err
@@ -268,45 +257,22 @@ class NatureRemoAPI:
         }
 
     async def send_command_signal(self, signal_id: str) -> None:
-        api_url = f"{NATURE_REMO_CLOUD_URL}/signals/{signal_id}/send"
-        headers = {"Authorization": f"Bearer {self._token}"}
-
+        path = f"/signals/{signal_id}/send"
         try:
-            async with self._session.post(api_url, headers=headers) as response:
-                self._log_rate_limits(response)
-                if response.status != 200:
-                    text = await response.text()
-                    _LOGGER.error("Failed to send signal %s: %s", signal_id, text)
-                    raise ClientError(
-                        f"Signal send failed: {response.status}"
-                    )
+            await self._request("POST", path)
         except (ClientError, TimeoutError) as err:
             _LOGGER.error("Signal send failed: %s", err)
             raise ClientError(f"Signal send failed: {err}") from err
 
     async def send_local_ir_message(self, freq: int, data: list[int]) -> dict:
         _LOGGER.info("Sending local IR message: freq=%s data_length=%s", freq, len(data))
-        base_url = self._get_base_url()
-        url = f"{base_url}/messages"
-        headers = {"Authorization": f"Bearer {self._token}"}
         payload = {"freq": freq, "data": data, "format": "us"}
-
         try:
-            async with self._session.post(
-                url, headers=headers, json=payload
-            ) as response:
-                self._log_rate_limits(response)
-
-                if response.status == 200:
-                    response_json = await response.json()
-                    _LOGGER.info("Local IR message sent successfully: %s", response_json)
-                    return response_json
-
-                text = await response.text()
-                _LOGGER.error(
-                    "Failed to send local IR message: %s - %s", response.status, text
-                )
-                raise ClientError(f"Local IR message failed: {response.status}")
+            result = await self._request(
+                "POST", "/messages", json_payload=payload, use_local=True
+            )
+            _LOGGER.info("Local IR message sent successfully: %s", result)
+            return result
         except (ClientError, TimeoutError) as err:
             _LOGGER.error("Local IR message failed: %s", err)
             raise ClientError(f"Local IR message failed: {err}") from err

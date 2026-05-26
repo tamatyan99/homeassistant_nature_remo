@@ -1,9 +1,11 @@
 """Shared entity helpers for Nature Remo integration."""
 
+from homeassistant.helpers.device_registry import DeviceInfo
+
 from .const import DOMAIN
 
 
-def get_device_info(device: dict) -> dict:
+def get_device_info(device: dict) -> DeviceInfo:
     """Build Home Assistant device_info dict from Nature Remo device data."""
     info = {
         "identifiers": {(DOMAIN, device["device_id"])},

@@ -102,39 +102,42 @@ class TestNatureRemoAPI:
 
     async def test_send_command_climate(self, api):
         mock_resp = _mock_response(status=200, json_data={"status": "ok"})
-        api._session.post = _mock_session_method(mock_resp)
+        api._session.request = _mock_session_method(mock_resp)
         payload = {"temperature": "25"}
         result = await api.send_command_climate(payload, "app-1")
         assert result == {"status": "ok"}
-        api._session.post.assert_called_once()
-        call_args = api._session.post.call_args
+        api._session.request.assert_called_once()
+        call_args = api._session.request.call_args
+        assert call_args[0][0] == "POST"
         assert (
-            call_args[0][0]
+            call_args[0][1]
             == f"{NATURE_REMO_CLOUD_URL}/appliances/app-1/aircon_settings"
         )
         assert call_args[1]["headers"]["Authorization"] == "Bearer test-token"
 
     async def test_send_command_climate_failure(self, api):
         mock_resp = _mock_response(status=500, text="Internal Server Error")
-        api._session.post = _mock_session_method(mock_resp)
+        api._session.request = _mock_session_method(mock_resp)
         with pytest.raises(ClientError, match="Climate command failed"):
             await api.send_command_climate({}, "app-1")
 
     async def test_send_local_ir_message_uses_cloud_by_default(self, api):
         mock_resp = _mock_response(status=200, json_data={"status": "sent"})
-        api._session.post = _mock_session_method(mock_resp)
+        api._session.request = _mock_session_method(mock_resp)
         result = await api.send_local_ir_message(38, [100, 200])
         assert result == {"status": "sent"}
-        call_args = api._session.post.call_args
-        assert call_args[0][0] == f"{NATURE_REMO_CLOUD_URL}/messages"
+        call_args = api._session.request.call_args
+        assert call_args[0][0] == "POST"
+        assert call_args[0][1] == f"{NATURE_REMO_CLOUD_URL}/messages"
 
     async def test_send_local_ir_message_uses_local_ip(self, api_with_local_ip):
         mock_resp = _mock_response(status=200, json_data={"status": "sent"})
-        api_with_local_ip._session.post = _mock_session_method(mock_resp)
+        api_with_local_ip._session.request = _mock_session_method(mock_resp)
         result = await api_with_local_ip.send_local_ir_message(38, [100, 200])
         assert result == {"status": "sent"}
-        call_args = api_with_local_ip._session.post.call_args
-        assert call_args[0][0] == "http://192.168.1.100/messages"
+        call_args = api_with_local_ip._session.request.call_args
+        assert call_args[0][0] == "POST"
+        assert call_args[0][1] == "http://192.168.1.100/messages"
         assert call_args[1]["headers"]["Authorization"] == "Bearer test-token"
 
     async def test_get_retries_on_429_then_succeeds(self, api):

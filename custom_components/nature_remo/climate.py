@@ -142,13 +142,7 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
 
     @property
     def target_temperature_step(self) -> float:
-        remo_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
-        temp_list = self._aircon_range_modes.get(remo_mode, {}).get("temp", [])
-        try:
-            temp_list = list(map(float, filter(None, temp_list)))
-        except (ValueError, TypeError):
-            return 1.0
-
+        temp_list = self._get_temp_list()
         if not temp_list:
             return 1.0
 
@@ -163,24 +157,14 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
 
     @property
     def min_temp(self):
-        remo_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
-        temp_list = self._aircon_range_modes.get(remo_mode, {}).get("temp", [])
-        try:
-            temp_list = list(map(float, filter(None, temp_list)))
-        except (ValueError, TypeError):
-            return 16.0
+        temp_list = self._get_temp_list()
         if not temp_list:
             return 16.0
         return min(temp_list)
 
     @property
     def max_temp(self):
-        remo_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
-        temp_list = self._aircon_range_modes.get(remo_mode, {}).get("temp", [])
-        try:
-            temp_list = list(map(float, filter(None, temp_list)))
-        except (ValueError, TypeError):
-            return 30.0
+        temp_list = self._get_temp_list()
         if not temp_list:
             return 30.0
         return max(temp_list)
@@ -228,6 +212,16 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
     @property
     def swing_mode(self) -> str | None:
         return self._swing_mode
+
+    def _get_temp_list(self) -> list[float]:
+        """Return parsed temperature list for current HVAC mode."""
+        remo_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
+        temp_list = self._aircon_range_modes.get(remo_mode, {}).get("temp", [])
+        try:
+            temp_list = list(map(float, filter(None, temp_list)))
+        except (ValueError, TypeError):
+            return []
+        return temp_list
 
     def _get_external_sensor_value(self, sensor_type: str) -> float | None:
         if self.hass is None or self._entry_id is None:
@@ -336,15 +330,15 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
             )
             if self._aircon_range_modes:
                 set_range_modes = [HVACMode.OFF]
-                if self._aircon_range_modes.get(MODE_MAP["cool"], {}):
+                if self._aircon_range_modes.get(HA_MODE_TO_REMO_MODE.get(HVACMode.COOL.value), {}):
                     set_range_modes.append(HVACMode.COOL)
-                if self._aircon_range_modes.get(MODE_MAP["dry"], {}):
+                if self._aircon_range_modes.get(HA_MODE_TO_REMO_MODE.get(HVACMode.DRY.value), {}):
                     set_range_modes.append(HVACMode.DRY)
-                if self._aircon_range_modes.get(MODE_MAP["warm"], {}):
+                if self._aircon_range_modes.get(HA_MODE_TO_REMO_MODE.get(HVACMode.HEAT.value), {}):
                     set_range_modes.append(HVACMode.HEAT)
-                if self._aircon_range_modes.get(MODE_MAP["blow"], {}):
+                if self._aircon_range_modes.get(HA_MODE_TO_REMO_MODE.get(HVACMode.FAN_ONLY.value), {}):
                     set_range_modes.append(HVACMode.FAN_ONLY)
-                if self._aircon_range_modes.get(MODE_MAP["auto"], {}):
+                if self._aircon_range_modes.get(HA_MODE_TO_REMO_MODE.get(HVACMode.AUTO.value), {}):
                     set_range_modes.append(HVACMode.AUTO)
                 self._hvac_modes = set_range_modes
 

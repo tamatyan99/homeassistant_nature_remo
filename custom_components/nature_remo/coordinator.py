@@ -151,37 +151,21 @@ class NatureRemoCoordinator(DataUpdateCoordinator):
                         "current_power": parsed["instant_power"],
                     }
 
-                elif appliance_type == "AC":
+                if appliance_type == "AC":
                     new_aircons[appliance_id] = appliance_info
-                    signals = appliance.get("signals", [])
-                    if signals:
-                        new_ir_remotes[appliance_id] = {
-                            "name": nickname,
-                            "appliance_id": appliance_id,
-                            "device": device_info,
-                            "signals": signals,
-                        }
 
-                elif appliance_type == "LIGHT":
+                if appliance_type == "LIGHT":
                     new_lights[appliance_id] = appliance_info
-                    signals = appliance.get("signals", [])
-                    if signals:
-                        new_ir_remotes[appliance_id] = {
-                            "name": nickname,
-                            "appliance_id": appliance_id,
-                            "device": device_info,
-                            "signals": signals,
-                        }
 
-                elif appliance_type == "IR":
-                    signals = appliance.get("signals", [])
-                    if signals:
-                        new_ir_remotes[appliance_id] = {
-                            "name": nickname,
-                            "appliance_id": appliance_id,
-                            "device": device_info,
-                            "signals": signals,
-                        }
+                # AC, LIGHT, and IR appliances may all expose signals
+                signals = appliance.get("signals", [])
+                if signals:
+                    new_ir_remotes[appliance_id] = {
+                        "name": nickname,
+                        "appliance_id": appliance_id,
+                        "device": device_info,
+                        "signals": signals,
+                    }
 
             self.devices = new_devices
             self.aircons = new_aircons
