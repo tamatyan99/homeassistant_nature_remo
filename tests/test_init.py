@@ -84,6 +84,43 @@ async def test_unload_entry_shuts_down_coordinator(hass):
     coordinator_mock.async_shutdown.assert_awaited_once()
 
 
+async def test_unload_entry_keeps_coordinator_running_when_platform_unload_fails(
+    hass, monkeypatch
+):
+    """Test that a failed platform unload does not leave a stopped coordinator."""
+    from custom_components.nature_remo import PLATFORMS, async_unload_entry
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"api_key": "test_key"},
+        entry_id="test-entry-unload-fails",
+    )
+    entry.add_to_hass(hass)
+
+    coordinator_mock = MagicMock()
+    coordinator_mock.async_shutdown = AsyncMock()
+    hass.data[DOMAIN] = {
+        entry.entry_id: {
+            "coordinator": coordinator_mock,
+            "api": AsyncMock(),
+        }
+    }
+
+    async_unload_platforms = AsyncMock(return_value=False)
+    monkeypatch.setattr(
+        hass.config_entries,
+        "async_unload_platforms",
+        async_unload_platforms,
+    )
+
+    result = await async_unload_entry(hass, entry)
+
+    assert result is False
+    async_unload_platforms.assert_awaited_once_with(entry, PLATFORMS)
+    coordinator_mock.async_shutdown.assert_not_awaited()
+    assert hass.data[DOMAIN][entry.entry_id]["coordinator"] is coordinator_mock
+
+
 async def test_send_light_mode_service(hass):
     """Test send_light_mode service with entity_id in data."""
     entry = MockConfigEntry(
