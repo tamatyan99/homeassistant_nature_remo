@@ -11,14 +11,17 @@ from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 
-from .api import NatureRemoAPI
+from .api import NatureRemoAPI, NatureRemoAuthError
 from .const import DOMAIN
 from .options_flow import NatureRemoOptionsFlowHandler
 
 _LOGGER = logging.getLogger(__name__)
 
 API_SCHEMA = vol.Schema(
-    {vol.Optional("name", default="Nature Remo"): str, vol.Required("api_key"): str}
+    {
+        vol.Optional("name", default="Nature Remo"): str,
+        vol.Required("api_key"): vol.All(str, vol.Length(min=1)),
+    }
 )
 
 
@@ -52,8 +55,10 @@ class NatureRemoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     raise ValueError("Unexpected devices response type")
             except TimeoutError:
                 errors["base"] = "cannot_connect"
-            except ClientError:
+            except NatureRemoAuthError:
                 errors["base"] = "invalid_auth"
+            except ClientError:
+                errors["base"] = "cannot_connect"
             except ValueError:
                 errors["base"] = "unknown"
             else:
@@ -81,13 +86,20 @@ class NatureRemoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     raise ValueError("Unexpected devices response type")
             except TimeoutError:
                 errors["base"] = "cannot_connect"
-            except ClientError:
+            except NatureRemoAuthError:
                 errors["base"] = "invalid_auth"
+            except ClientError:
+                errors["base"] = "cannot_connect"
             except ValueError:
                 errors["base"] = "unknown"
             else:
+                new_unique_id = hashlib.sha256(api_key.encode()).hexdigest()[:32]
+                await self.async_set_unique_id(new_unique_id)
+                self._abort_if_unique_id_configured()
                 self.hass.config_entries.async_update_entry(
-                    reauth_entry, data={**reauth_entry.data, "api_key": api_key}
+                    reauth_entry,
+                    data={**reauth_entry.data, "api_key": api_key},
+                    unique_id=new_unique_id,
                 )
                 await self.hass.config_entries.async_reload(reauth_entry.entry_id)
                 return self.async_abort(reason="reauth_successful")
@@ -100,5 +112,5 @@ class NatureRemoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry):
+    def async_get_options_flow(config_entry) -> NatureRemoOptionsFlowHandler:
         return NatureRemoOptionsFlowHandler()

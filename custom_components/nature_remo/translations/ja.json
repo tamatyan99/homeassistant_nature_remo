@@ -8,15 +8,7 @@
           "name": "名前",
           "api_key": "APIキー"
         }
-      }
-    },
-    "error": {
-      "invalid_auth": "認証に失敗しました。APIキーを確認してください。"
-    },
-    "abort": {
-      "reauth_successful": "再認証が完了しました。"
-    },
-    "step": {
+      },
       "reauth": {
         "title": "Nature Remo の再認証",
         "description": "APIキーの有効期限が切れました。新しいAPIキーを入力してください。",
@@ -24,12 +16,26 @@
           "api_key": "APIキー"
         }
       }
+    },
+    "error": {
+      "invalid_auth": "認証に失敗しました。APIキーを確認してください。",
+      "cannot_connect": "接続に失敗しました。ネットワークを確認するか、後でもう一度お試しください。",
+      "unknown": "予期しないエラーが発生しました。"
+    },
+    "abort": {
+      "already_configured": "このAPIキーは既に設定されています。",
+      "reauth_successful": "再認証が完了しました。"
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Nature Remo オプション"
+        "title": "Nature Remo オプション",
+        "data": {
+          "update_interval": "更新間隔（秒）",
+          "motion_threshold_minutes": "モーション検出閾値（分）",
+          "local_ip": "Nature Remo ローカルIPアドレス"
+        }
       }
     }
   },

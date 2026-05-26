@@ -10,6 +10,7 @@ from homeassistant import config_entries
 from homeassistant.data_entry_flow import FlowResultType
 import pytest
 
+from custom_components.nature_remo.api import NatureRemoAuthError
 from custom_components.nature_remo.const import DOMAIN
 
 
@@ -52,7 +53,7 @@ async def test_user_step_invalid_api_key(hass):
     """Test async_step_user with an invalid API key shows an error."""
     with patch(
         "custom_components.nature_remo.config_flow.NatureRemoAPI.get_devices",
-        new=AsyncMock(side_effect=aiohttp.ClientError("Unauthorized")),
+        new=AsyncMock(side_effect=NatureRemoAuthError("Unauthorized")),
     ):
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -66,6 +67,46 @@ async def test_user_step_invalid_api_key(hass):
     assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "user"
     assert result["errors"] == {"base": "invalid_auth"}
+
+
+async def test_user_step_timeout(hass):
+    """Test async_step_user with a timeout shows cannot_connect."""
+    with patch(
+        "custom_components.nature_remo.config_flow.NatureRemoAPI.get_devices",
+        new=AsyncMock(side_effect=TimeoutError),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"name": "Nature Remo", "api_key": "some_key"},
+        )
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "user"
+    assert result["errors"] == {"base": "cannot_connect"}
+
+
+async def test_user_step_unexpected_response(hass):
+    """Test async_step_user with an unexpected response shows unknown."""
+    with patch(
+        "custom_components.nature_remo.config_flow.NatureRemoAPI.get_devices",
+        new=AsyncMock(return_value={"unexpected": "dict"}),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"name": "Nature Remo", "api_key": "some_key"},
+        )
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "user"
+    assert result["errors"] == {"base": "unknown"}
 
 
 async def test_reauth_step_valid_api_key(hass):
@@ -121,7 +162,7 @@ async def test_reauth_step_invalid_api_key(hass):
 
     with patch(
         "custom_components.nature_remo.config_flow.NatureRemoAPI.get_devices",
-        new=AsyncMock(side_effect=aiohttp.ClientError("Unauthorized")),
+        new=AsyncMock(side_effect=NatureRemoAuthError("Unauthorized")),
     ):
         result = await hass.config_entries.flow.async_init(
             DOMAIN,
@@ -139,6 +180,49 @@ async def test_reauth_step_invalid_api_key(hass):
     assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "reauth"
     assert result["errors"] == {"base": "invalid_auth"}
+
+
+async def test_reauth_duplicate_api_key(hass):
+    """Test that reauth aborts when the new API key conflicts with another entry."""
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    key1 = "api_key_1"
+    key2 = "api_key_2"
+    entry1 = MockConfigEntry(
+        domain=DOMAIN,
+        data={"api_key": key1},
+        unique_id=_unique_id(key1),
+    )
+    entry1.add_to_hass(hass)
+
+    entry2 = MockConfigEntry(
+        domain=DOMAIN,
+        data={"api_key": key2},
+        unique_id=_unique_id(key2),
+    )
+    entry2.add_to_hass(hass)
+
+    with patch(
+        "custom_components.nature_remo.config_flow.NatureRemoAPI.get_devices",
+        new=AsyncMock(return_value=[{"id": "device-1"}]),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={
+                "source": config_entries.SOURCE_REAUTH,
+                "entry_id": entry2.entry_id,
+            },
+        )
+        assert result["type"] == FlowResultType.FORM
+        assert result["step_id"] == "reauth"
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"api_key": key1},
+        )
+
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "already_configured"
 
 
 async def test_unique_id_conflict(hass):

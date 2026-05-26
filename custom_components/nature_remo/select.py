@@ -56,6 +56,7 @@ async def async_setup_entry(
 
 class NatureRemoLightSelect(CoordinatorEntity[NatureRemoCoordinator], SelectEntity):
     _attr_has_entity_name = True
+    _attr_should_poll = False
 
     def __init__(self, coordinator, appliance, device, api) -> None:
         super().__init__(coordinator)
@@ -99,8 +100,11 @@ class NatureRemoLightSelect(CoordinatorEntity[NatureRemoCoordinator], SelectEnti
         self.async_write_ha_state()
 
 
+# NOTE: Preset logic is duplicated with NatureRemoClimate.async_set_preset_mode.
+# When changing either side, keep them in sync or extract a shared helper.
 class NatureRemoAcPresetSelect(CoordinatorEntity[NatureRemoCoordinator], SelectEntity):
     _attr_has_entity_name = True
+    _attr_should_poll = False
 
     def __init__(self, coordinator, appliance, device, api) -> None:
         super().__init__(coordinator)

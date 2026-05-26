@@ -7,7 +7,7 @@ from aiohttp import ClientError
 from homeassistant.components.remote import RemoteEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -36,11 +36,12 @@ async def async_setup_entry(
         for remote_info in coordinator.ir_remotes.values()
     ]
 
-    async_add_entities(entities)
+    async_add_entities(entities, True)
 
 
 class NatureRemoRemoteEntity(CoordinatorEntity[NatureRemoCoordinator], RemoteEntity):
     _attr_has_entity_name = True
+    _attr_should_poll = False
 
     def __init__(
         self,
@@ -80,30 +81,18 @@ class NatureRemoRemoteEntity(CoordinatorEntity[NatureRemoCoordinator], RemoteEnt
     def available(self) -> bool:
         return super().available and bool(self._commands)
 
-    async def async_send_command(self, command: str | list[str], **kwargs: Any) -> None:
-        if isinstance(command, str):
-            command = [command]
-
+    async def async_send_command(self, command: list[str], **kwargs: Any) -> None:
+        failed = []
         for cmd in command:
-            normalized_cmd = cmd.lower()
-            signal_id = self._commands.get(normalized_cmd)
-            if not signal_id:
-                _LOGGER.warning("Unknown command: %s", cmd)
-                continue
-
-            try:
-                await self._api.send_command_signal(signal_id)
-            except (ClientError, TimeoutError):
-                _LOGGER.error("Failed to send command: %s", cmd)
-                continue
-
-            if normalized_cmd in ON_COMMANDS:
-                self._attr_state = "on"
-            elif normalized_cmd in OFF_COMMANDS:
-                self._attr_state = "off"
-            else:
-                self._attr_state = cmd
-
+            signal_id = self._commands.get(cmd)
+            if signal_id:
+                try:
+                    await self._api.send_command_signal(signal_id)
+                except Exception as err:
+                    failed.append(cmd)
+                    _LOGGER.error("Failed to send command '%s': %s", cmd, err)
+        if failed:
+            raise ServiceValidationError(f"Failed to send commands: {', '.join(failed)}")
         self.async_write_ha_state()
 
     async def async_turn_on(self) -> None:

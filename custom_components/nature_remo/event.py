@@ -17,7 +17,6 @@ async def async_setup_entry(hass, entry, async_add_entities):
             NatureRemoMotionEvent(
                 coordinator,
                 device_id,
-                data["name"],
                 {
                     "device_id": data["device_id"],
                     "name": data["name"],
@@ -28,19 +27,20 @@ async def async_setup_entry(hass, entry, async_add_entities):
             )
         )
 
-    async_add_entities(entities)
+    async_add_entities(entities, True)
 
 
 class NatureRemoMotionEvent(CoordinatorEntity[NatureRemoCoordinator], EventEntity):
     _attr_has_entity_name = True
     _attr_event_types = ["motion_detected"]
+    _attr_should_poll = False
 
-    def __init__(self, coordinator, device_id, name, device):
+    def __init__(self, coordinator, device_id, device):
         super().__init__(coordinator)
         self._device = device
         self._device_id = device_id
         self._attr_name = "Motion Event"
-        self._attr_unique_id = f"{device_id}_motion_event"
+        self._attr_unique_id = f"nature_remo_{device_id}_motion_event"
         self._last_motion = None
 
     @property

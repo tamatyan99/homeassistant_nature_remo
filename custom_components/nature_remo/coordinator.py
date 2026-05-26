@@ -10,6 +10,7 @@ from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
     UpdateFailed,
 )
+from homeassistant.util.dt import now as dt_now
 
 from .api import NatureRemoAuthError
 
@@ -71,7 +72,7 @@ class NatureRemoCoordinator(DataUpdateCoordinator):
                             )
                             created_at = None
                         if created_at is not None:
-                            now = datetime.now(created_at.tzinfo)
+                            now = dt_now(created_at.tzinfo)
                             is_active = (now - created_at) < timedelta(
                                 minutes=self.motion_threshold_minutes
                             )
@@ -190,3 +191,5 @@ class NatureRemoCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(f"Data processing error: {err}") from err
         except ValueError as err:
             raise UpdateFailed(f"Data parse error: {err}") from err
+        except Exception as err:
+            raise UpdateFailed(f"Unexpected error: {err}") from err

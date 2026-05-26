@@ -8,15 +8,7 @@
           "name": "Name",
           "api_key": "API Key"
         }
-      }
-    },
-    "error": {
-      "invalid_auth": "Invalid authentication. Please check your API key."
-    },
-    "abort": {
-      "reauth_successful": "Re-authentication was successful."
-    },
-    "step": {
+      },
       "reauth": {
         "title": "Re-authenticate Nature Remo",
         "description": "The API key is no longer valid. Please enter a new API key.",
@@ -24,12 +16,26 @@
           "api_key": "API Key"
         }
       }
+    },
+    "error": {
+      "invalid_auth": "Invalid authentication. Please check your API key.",
+      "cannot_connect": "Failed to connect. Please check your network or try again later.",
+      "unknown": "An unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "This API key is already configured.",
+      "reauth_successful": "Re-authentication was successful."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Nature Remo Options"
+        "title": "Nature Remo Options",
+        "data": {
+          "update_interval": "Update Interval (seconds)",
+          "motion_threshold_minutes": "Motion Detection Threshold (minutes)",
+          "local_ip": "Nature Remo Local IP Address"
+        }
       }
     }
   },

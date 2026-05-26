@@ -7,7 +7,11 @@ import pytest
 from aiohttp import ClientError
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from custom_components.nature_remo.api import NATURE_REMO_CLOUD_URL, NatureRemoAPI
+from custom_components.nature_remo.api import (
+    NATURE_REMO_CLOUD_URL,
+    NatureRemoAPI,
+    NatureRemoAuthError,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -31,6 +35,15 @@ def _mock_session_method(mock_resp):
     mock.return_value.__aenter__ = AsyncMock(return_value=mock_resp)
     mock.return_value.__aexit__ = AsyncMock(return_value=False)
     return mock
+
+
+def _mock_context_manager(mock_resp):
+    class _Ctx:
+        async def __aenter__(self):
+            return mock_resp
+        async def __aexit__(self, *args):
+            return False
+    return _Ctx()
 
 
 @pytest.fixture
@@ -62,19 +75,19 @@ async def api_with_local_ip():
 class TestNatureRemoAPI:
     async def test_get_returns_list(self, api):
         mock_resp = _mock_response(status=200, json_data=[{"id": "dev-1"}])
-        api._session.get = _mock_session_method(mock_resp)
+        api._session.request = _mock_session_method(mock_resp)
         result = await api._get("/devices")
         assert result == [{"id": "dev-1"}]
 
     async def test_get_returns_dict(self, api):
         mock_resp = _mock_response(status=200, json_data={"key": "value"})
-        api._session.get = _mock_session_method(mock_resp)
+        api._session.request = _mock_session_method(mock_resp)
         result = await api._get("/test")
         assert result == {"key": "value"}
 
     async def test_get_raises_value_error_on_string(self, api):
         mock_resp = _mock_response(status=200, json_data="invalid")
-        api._session.get = _mock_session_method(mock_resp)
+        api._session.request = _mock_session_method(mock_resp)
         with pytest.raises(ValueError, match="Unexpected API response type"):
             await api._get("/test")
 
@@ -82,23 +95,25 @@ class TestNatureRemoAPI:
         mock_resp = _mock_response(
             status=200, json_data=[{"id": "dev-1", "name": "Remo"}]
         )
-        api._session.get = _mock_session_method(mock_resp)
+        api._session.request = _mock_session_method(mock_resp)
         result = await api.get_devices()
         assert result == [{"id": "dev-1", "name": "Remo"}]
-        api._session.get.assert_called_once()
-        call_args = api._session.get.call_args
-        assert call_args[0][0] == f"{NATURE_REMO_CLOUD_URL}/devices"
+        api._session.request.assert_called_once()
+        call_args = api._session.request.call_args
+        assert call_args[0][0] == "GET"
+        assert call_args[0][1] == f"{NATURE_REMO_CLOUD_URL}/devices"
 
     async def test_get_appliances(self, api):
         mock_resp = _mock_response(
             status=200, json_data=[{"id": "app-1", "type": "AC"}]
         )
-        api._session.get = _mock_session_method(mock_resp)
+        api._session.request = _mock_session_method(mock_resp)
         result = await api.get_appliances()
         assert result == [{"id": "app-1", "type": "AC"}]
-        api._session.get.assert_called_once()
-        call_args = api._session.get.call_args
-        assert call_args[0][0] == f"{NATURE_REMO_CLOUD_URL}/appliances"
+        api._session.request.assert_called_once()
+        call_args = api._session.request.call_args
+        assert call_args[0][0] == "GET"
+        assert call_args[0][1] == f"{NATURE_REMO_CLOUD_URL}/appliances"
 
     async def test_send_command_climate(self, api):
         mock_resp = _mock_response(status=200, json_data={"status": "ok"})
@@ -145,35 +160,23 @@ class TestNatureRemoAPI:
         resp_200 = _mock_response(status=200, json_data=[{"id": "dev-1"}])
         responses = [resp_429, resp_200]
 
-        class _MockCtx:
-            def __init__(self, resp):
-                self._resp = resp
-            async def __aenter__(self):
-                return self._resp
-            async def __aexit__(self, *args):
-                return False
-
-        api._session.get = MagicMock(side_effect=lambda *a, **k: _MockCtx(responses.pop(0)))
+        api._session.request = MagicMock(
+            side_effect=lambda *a, **k: _mock_context_manager(responses.pop(0))
+        )
         result = await api._get("/devices")
         assert result == [{"id": "dev-1"}]
-        assert api._session.get.call_count == 2
+        assert api._session.request.call_count == 2
 
     async def test_get_raises_after_max_retries_on_429(self, api):
         resp_429 = _mock_response(status=429)
         responses = [resp_429, resp_429, resp_429, resp_429]
 
-        class _MockCtx:
-            def __init__(self, resp):
-                self._resp = resp
-            async def __aenter__(self):
-                return self._resp
-            async def __aexit__(self, *args):
-                return False
-
-        api._session.get = MagicMock(side_effect=lambda *a, **k: _MockCtx(responses.pop(0)))
+        api._session.request = MagicMock(
+            side_effect=lambda *a, **k: _mock_context_manager(responses.pop(0))
+        )
         with pytest.raises(ClientError, match="API request failed with status 429"):
             await api._get("/devices")
-        assert api._session.get.call_count == 4
+        assert api._session.request.call_count == 4
 
     async def test_get_uses_retry_after_header(self, api):
         resp_429 = _mock_response(status=429)
@@ -181,15 +184,66 @@ class TestNatureRemoAPI:
         resp_200 = _mock_response(status=200, json_data=[{"id": "dev-1"}])
         responses = [resp_429, resp_200]
 
-        class _MockCtx:
-            def __init__(self, resp):
-                self._resp = resp
+        api._session.request = MagicMock(
+            side_effect=lambda *a, **k: _mock_context_manager(responses.pop(0))
+        )
+        result = await api._get("/devices")
+        assert result == [{"id": "dev-1"}]
+        assert api._session.request.call_count == 2
+
+    async def test_get_does_not_retry_on_401(self, api):
+        resp_401 = _mock_response(status=401)
+        api._session.request = _mock_session_method(resp_401)
+        with pytest.raises(NatureRemoAuthError):
+            await api._get("/devices")
+        assert api._session.request.call_count == 1
+
+    async def test_call_api_retries_on_500_then_succeeds(self, api):
+        resp_500 = _mock_response(status=500)
+        resp_200 = _mock_response(status=200, json_data={"status": "ok"})
+        responses = [resp_500, resp_200]
+
+        api._session.request = MagicMock(
+            side_effect=lambda *a, **k: _mock_context_manager(responses.pop(0))
+        )
+        result = await api._call_api("GET", "/devices")
+        assert result == {"status": "ok"}
+        assert api._session.request.call_count == 2
+
+    async def test_call_api_retries_on_timeout_then_succeeds(self, api):
+        resp_200 = _mock_response(status=200, json_data={"status": "ok"})
+
+        class TimeoutCtx:
             async def __aenter__(self):
-                return self._resp
+                raise TimeoutError()
             async def __aexit__(self, *args):
                 return False
 
-        api._session.get = MagicMock(side_effect=lambda *a, **k: _MockCtx(responses.pop(0)))
-        result = await api._get("/devices")
-        assert result == [{"id": "dev-1"}]
-        assert api._session.get.call_count == 2
+        responses = [TimeoutCtx(), _mock_context_manager(resp_200)]
+        api._session.request = MagicMock(side_effect=lambda *a, **k: responses.pop(0))
+        result = await api._call_api("GET", "/devices")
+        assert result == {"status": "ok"}
+        assert api._session.request.call_count == 2
+
+    async def test_call_api_retries_on_429_for_post(self, api):
+        resp_429 = _mock_response(status=429)
+        resp_429.headers = {"Retry-After": "1"}
+        resp_200 = _mock_response(status=200, json_data={"status": "ok"})
+        responses = [resp_429, resp_200]
+
+        api._session.request = MagicMock(
+            side_effect=lambda *a, **k: _mock_context_manager(responses.pop(0))
+        )
+        result = await api._call_api("POST", "/signals/sig-1/send")
+        assert result == {"status": "ok"}
+        assert api._session.request.call_count == 2
+
+    async def test_parse_smart_meter_properties(self, api):
+        properties = [
+            {"epc": 211, "val": "1"},
+            {"epc": 225, "val": "0"},
+            {"epc": 231, "val": "500"},
+        ]
+        result = api.parse_smart_meter_properties(properties)
+        assert result["instant_power"] == 500
+        assert result["buy_power"] == 0.0

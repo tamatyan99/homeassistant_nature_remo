@@ -1,17 +1,13 @@
 send_light_mode:
   name: Nature Remo Light Mode
-  description: 指定したライトエンティティに対してボタン名で操作します / Send command to the selected light using button name.
+  description: Send command to the selected light using button name.
+  target:
+    entity:
+      domain: light
   fields:
-    entity_id:
-      name: エンティティ / Entity
-      required: true
-      example: light.nature_remo_light_abcdef
-      selector:
-        entity:
-          domain: light
     mode:
-      name: 操作モード / Mode
-      description: "実行したい操作モードを選択または入力してください（例: on, night） / Select or input the desired mode (e.g., on, night)"
+      name: Mode
+      description: Select or input the desired mode (e.g., on, night).
       required: true
       example: night
       selector:
@@ -29,11 +25,11 @@ send_light_mode:
 
 learn_signal:
   name: Nature Remo Learn Signal
-  description: 赤外線信号の学習を開始します / Start learning an infrared signal.
+  description: Start learning an infrared signal.
   fields:
     appliance_id:
-      name: アプライアンスID / Appliance ID
-      description: "信号を学習するアプライアンスのID / Appliance ID to learn a signal for"
+      name: Appliance ID
+      description: Appliance ID to learn a signal for
       required: true
       example: "abc123-def456"
       selector:

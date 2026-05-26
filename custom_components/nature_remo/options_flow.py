@@ -2,6 +2,7 @@ import logging
 
 from homeassistant import config_entries
 from homeassistant.components.sensor import SensorDeviceClass
+from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
 from homeassistant.helpers.device_registry import async_get as async_get_device_registry
 
@@ -14,8 +15,7 @@ _LOGGER = logging.getLogger(__name__)
 
 class NatureRemoOptionsFlowHandler(config_entries.OptionsFlow):
 
-    async def async_step_init(self, user_input=None):
-
+    async def async_step_init(self, user_input=None) -> FlowResult:
         device_registry = async_get_device_registry(self.hass)
         devices = [
             dev
@@ -24,39 +24,18 @@ class NatureRemoOptionsFlowHandler(config_entries.OptionsFlow):
         ]
 
         options = self.config_entry.options
-        lang = self.hass.config.language
-
-        if lang == "ja":
-            interval_label = "更新間隔（秒）"
-            motion_threshold_label = "モーション検出閾値（分）"
-            local_ip_label = "Nature Remo ローカルIPアドレス"
-            ext_temp_label_suffix = "：外部温度センサー"
-            ext_humidity_label_suffix = "：外部湿度センサー"
-        else:
-            interval_label = "Update Interval (seconds)"
-            motion_threshold_label = "Motion Detection Threshold (minutes)"
-            local_ip_label = "Nature Remo Local IP Address"
-            ext_temp_label_suffix = ": External Temperature Sensor"
-            ext_humidity_label_suffix = ": External Humidity Sensor"
-
-        special_key_map = {
-            interval_label: "update_interval",
-            motion_threshold_label: "motion_threshold_minutes",
-            local_ip_label: "local_ip",
-        }
-        label_key_map = {}
 
         interval_default = options.get("update_interval", 60)
         motion_threshold_default = options.get("motion_threshold_minutes", 5)
         local_ip_default = options.get("local_ip", "")
         data_schema = {
-            vol.Optional(interval_label, default=interval_default): vol.In(
+            vol.Optional("update_interval", default=interval_default): vol.In(
                 [30, 60, 90]
             ),
-            vol.Optional(motion_threshold_label, default=motion_threshold_default): vol.In(
+            vol.Optional("motion_threshold_minutes", default=motion_threshold_default): vol.In(
                 [1, 3, 5, 10, 15]
             ),
-            vol.Optional(local_ip_label, default=local_ip_default): vol.Any(
+            vol.Optional("local_ip", default=local_ip_default): vol.Any(
                 "",
                 vol.Match(r"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$")
             ),
@@ -92,14 +71,11 @@ class NatureRemoOptionsFlowHandler(config_entries.OptionsFlow):
                 nature_remo_device_id,
             )
 
-            ext_temp_label = f"{name} {ext_temp_label_suffix}"
             ext_temp_key = f"external_temperature_{nature_remo_device_id}"
-            label_key_map[ext_temp_label] = ext_temp_key
             data_schema[
                 vol.Optional(
-                    ext_temp_label,
-                    default=options.get(ext_temp_key),
-                    description={"suggested_value": options.get(ext_temp_key)},
+                    ext_temp_key,
+                    default=options.get(ext_temp_key) or "",
                 )
             ] = selector.EntitySelector(
                 selector.EntitySelectorConfig(
@@ -109,14 +85,11 @@ class NatureRemoOptionsFlowHandler(config_entries.OptionsFlow):
                 )
             )
 
-            ext_humidity_label = f"{name} {ext_humidity_label_suffix}"
             ext_humidity_key = f"external_humidity_{nature_remo_device_id}"
-            label_key_map[ext_humidity_label] = ext_humidity_key
             data_schema[
                 vol.Optional(
-                    ext_humidity_label,
-                    default=options.get(ext_humidity_key),
-                    description={"suggested_value": options.get(ext_humidity_key)},
+                    ext_humidity_key,
+                    default=options.get(ext_humidity_key) or "",
                 )
             ] = selector.EntitySelector(
                 selector.EntitySelectorConfig(
@@ -127,16 +100,7 @@ class NatureRemoOptionsFlowHandler(config_entries.OptionsFlow):
             )
 
         if user_input is not None:
-            result = {}
-
-            for label, value in user_input.items():
-                if label in special_key_map:
-                    result[special_key_map[label]] = value
-                elif label in label_key_map:
-                    if value is not None:
-                        result[label_key_map[label]] = value
-
-            return self.async_create_entry(title="", data=result)
+            return self.async_create_entry(title="", data=user_input)
 
         return self.async_show_form(
             step_id="init",

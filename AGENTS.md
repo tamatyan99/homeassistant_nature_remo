@@ -2,8 +2,10 @@
 
 ## Subagent Usage
 
-- **積極的にサブエージェントを使うこと。** 並列処理できる作業は積極的に `Agent` ツールで子エージェントに任せ、親エージェントは別の作業を進める。
-- 子エージェントの結果が次のステップに必須な場合のみ、その完了を待つ。
+- **Use subagents aggressively.** Delegate parallelizable work to child agents via the `Agent` tool and keep advancing unrelated tasks in the parent agent.
+- Only block waiting for a child agent when its output is strictly required for the next step.
+- **Prompt child agents for minimal output.** In the `prompt`, explicitly instruct the subagent to skip greetings, explanations, and status updates. It should perform the work and return only the final result (e.g., code, findings, or data) needed by the parent agent.
+- **Write subagent prompts in English.** Even if the parent-agent conversation is in Japanese, issue the subagent's `prompt` in English to reduce token usage and improve model compliance.
 
 ## Development Rules
 

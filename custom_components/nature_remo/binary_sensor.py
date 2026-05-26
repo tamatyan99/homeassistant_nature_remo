@@ -19,7 +19,6 @@ async def async_setup_entry(hass, entry, async_add_entities):
             NatureRemoMotionBinarySensor(
                 coordinator,
                 device_id,
-                data["name"],
                 {
                     "device_id": data["device_id"],
                     "name": data["name"],
@@ -30,25 +29,30 @@ async def async_setup_entry(hass, entry, async_add_entities):
             )
         )
 
-    async_add_entities(entities)
+    async_add_entities(entities, True)
 
 
 class NatureRemoMotionBinarySensor(
     CoordinatorEntity[NatureRemoCoordinator], BinarySensorEntity
 ):
     _attr_has_entity_name = True
+    _attr_should_poll = False
 
-    def __init__(self, coordinator, device_id, name, device):
+    def __init__(self, coordinator, device_id, device):
         super().__init__(coordinator)
         self._device = device
         self._device_id = device_id
         self._attr_name = "Motion"
-        self._attr_unique_id = f"{device_id}_motion"
+        self._attr_unique_id = f"nature_remo_{device_id}_motion"
         self._attr_device_class = BinarySensorDeviceClass.MOTION
 
     @property
     def device_info(self):
         return get_device_info(self._device)
+
+    @property
+    def available(self) -> bool:
+        return super().available and self._device_id in self.coordinator.motion_sensors
 
     @property
     def is_on(self):

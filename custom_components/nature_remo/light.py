@@ -42,6 +42,8 @@ async def async_setup_entry(
 
 class NatureRemoLight(CoordinatorEntity[NatureRemoCoordinator], LightEntity):
     _attr_has_entity_name = True
+    _attr_should_poll = False
+    _attr_supported_color_modes = {ColorMode.ONOFF}
 
     def __init__(self, coordinator, appliance, device, api) -> None:
         super().__init__(coordinator)
@@ -50,7 +52,6 @@ class NatureRemoLight(CoordinatorEntity[NatureRemoCoordinator], LightEntity):
         self._appliance = appliance
         self._device = device
         self._appliance_id = appliance["appliance_id"]
-        self._attr_supported_color_modes = {ColorMode.ONOFF}
         self._is_on = False
         self._last_mode = "on"
         self._supported_effects: list[str] = []
@@ -67,10 +68,6 @@ class NatureRemoLight(CoordinatorEntity[NatureRemoCoordinator], LightEntity):
     @property
     def device_info(self):
         return get_device_info(self._device)
-
-    @property
-    def supported_color_modes(self):
-        return self._attr_supported_color_modes
 
     @property
     def color_mode(self):
@@ -129,7 +126,7 @@ class NatureRemoLight(CoordinatorEntity[NatureRemoCoordinator], LightEntity):
 
     async def async_turn_on(self, **kwargs):
         _LOGGER.debug("kwargs: %s", kwargs)
-        effect = kwargs.get("effect") or kwargs.get("remo_light_mode", "on")
+        effect = kwargs.get("effect", "on")
 
         if effect not in self._supported_effects:
             raise HomeAssistantError(f"Effect '{effect}' is not supported by this light")

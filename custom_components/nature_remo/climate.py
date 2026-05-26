@@ -51,6 +51,7 @@ async def async_setup_entry(
 
 class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity):
     _attr_has_entity_name = True
+    _attr_should_poll = False
 
     def __init__(
         self,
@@ -108,18 +109,7 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         if preset_mode == "eco":
             payload = {"button": "eco", "temperature": "26"}
-            prev_preset = self._preset_mode
-            prev_temp = self._target_temperature
-            try:
-                await self._api.send_command_climate(payload, self._appliance_id)
-                self._preset_mode = "eco"
-                self._target_temperature = 26
-                self.async_write_ha_state()
-            except (ClientError, TimeoutError):
-                self._preset_mode = prev_preset
-                self._target_temperature = prev_temp
-                self.async_write_ha_state()
-                raise
+            await self._apply_preset(preset_mode, 26, payload)
         else:
             operation_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
             if operation_mode is None:
@@ -130,15 +120,21 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
                 "operation_mode": operation_mode,
                 "temperature": str(self._target_temperature),
             }
-            prev_preset = self._preset_mode
-            try:
-                await self._api.send_command_climate(payload, self._appliance_id)
-                self._preset_mode = PRESET_NONE
-                self.async_write_ha_state()
-            except (ClientError, TimeoutError):
-                self._preset_mode = prev_preset
-                self.async_write_ha_state()
-                raise
+            await self._apply_preset(PRESET_NONE, self._target_temperature, payload)
+
+    async def _apply_preset(self, preset_mode: str, target_temp: float, payload: dict) -> None:
+        prev_preset = self._preset_mode
+        prev_temp = self._target_temperature
+        try:
+            await self._api.send_command_climate(payload, self._appliance_id)
+            self._preset_mode = preset_mode
+            self._target_temperature = target_temp
+            self.async_write_ha_state()
+        except (ClientError, TimeoutError):
+            self._preset_mode = prev_preset
+            self._target_temperature = prev_temp
+            self.async_write_ha_state()
+            raise
 
     @property
     def target_temperature_step(self) -> float:
@@ -275,14 +271,7 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
             )
             return None
 
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        _LOGGER.debug("[%s] Start _handle_coordinator_update.", self._attr_name)
-        if self.coordinator.data is None:
-            _LOGGER.debug("[%s] Coordinator data is None, skipping update.", self._attr_name)
-            return
-        appliance = self.coordinator.data.get(self._appliance_id, {})
-
+    def _update_external_sensors(self) -> None:
         external_temperature = self._get_external_sensor_value("temperature")
         if external_temperature is not None:
             self._temperature = external_temperature
@@ -291,21 +280,24 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
         if external_humidity is not None:
             self._humidity = external_humidity
 
+    def _update_device_events(self) -> None:
         device_id = self._device["device_id"]
         device_data = self.coordinator.devices.get(device_id)
         if device_data is None:
             _LOGGER.warning(
                 "Device '%s' not found in coordinator devices.", device_id
             )
-        else:
-            device_events = device_data.get("events", {})
-            if external_temperature is None:
-                if "te" in device_events:
-                    self._temperature = device_events["te"].get("val")
-            if external_humidity is None:
-                if "hu" in device_events:
-                    self._humidity = device_events["hu"].get("val")
+            return
 
+        device_events = device_data.get("events", {})
+        if self._temperature is None:
+            if "te" in device_events:
+                self._temperature = device_events["te"].get("val")
+        if self._humidity is None:
+            if "hu" in device_events:
+                self._humidity = device_events["hu"].get("val")
+
+    def _update_aircon_state(self, appliance: dict) -> None:
         if appliance and "settings" in appliance:
             hvac_mode = self.get_remo_mode_to_hvac_mode(
                 appliance["settings"].get("mode", "")
@@ -341,6 +333,18 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
                 if self._aircon_range_modes.get(HA_MODE_TO_REMO_MODE.get(HVACMode.AUTO.value), {}):
                     set_range_modes.append(HVACMode.AUTO)
                 self._hvac_modes = set_range_modes
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        _LOGGER.debug("[%s] Start _handle_coordinator_update.", self._attr_name)
+        if self.coordinator.data is None:
+            _LOGGER.debug("[%s] Coordinator data is None, skipping update.", self._attr_name)
+            return
+        appliance = self.coordinator.data.get(self._appliance_id, {})
+
+        self._update_external_sensors()
+        self._update_device_events()
+        self._update_aircon_state(appliance)
 
         self.async_write_ha_state()
 

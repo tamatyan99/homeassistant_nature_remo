@@ -48,7 +48,7 @@ async def async_setup_entry(
             )
         )
 
-    async_add_entities(entities)
+    async_add_entities(entities, True)
 
 
 class NatureRemoLearnSignalButton(CoordinatorEntity[NatureRemoCoordinator], ButtonEntity):
@@ -56,6 +56,7 @@ class NatureRemoLearnSignalButton(CoordinatorEntity[NatureRemoCoordinator], Butt
 
     _attr_icon = "mdi:remote"
     _attr_has_entity_name = True
+    _attr_should_poll = False
 
     def __init__(
         self,
@@ -89,6 +90,7 @@ class NatureRemoRefreshDataButton(CoordinatorEntity[NatureRemoCoordinator], Butt
 
     _attr_icon = "mdi:refresh"
     _attr_has_entity_name = True
+    _attr_should_poll = False
 
     def __init__(
         self,

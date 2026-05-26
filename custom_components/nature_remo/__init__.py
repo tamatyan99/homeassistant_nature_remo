@@ -5,7 +5,7 @@ from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import ServiceValidationError
 from .api import NatureRemoAPI
 from .coordinator import NatureRemoCoordinator
-from .const import DOMAIN, DEFAULT_UPDATE_INTERVAL, DEFAULT_MOTION_THRESHOLD
+from .const import DOMAIN, DEFAULT_UPDATE_INTERVAL, DEFAULT_MOTION_THRESHOLD_MINUTES
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS = ["climate", "light", "sensor", "remote", "switch", "binary_sensor", "event", "button", "select"]
@@ -19,12 +19,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     local_ip = entry.options.get("local_ip", "")
     api = NatureRemoAPI(hass, entry.data["api_key"], local_ip=local_ip if local_ip else None)
 
-    update_interval = int(entry.options.get("update_interval", DEFAULT_UPDATE_INTERVAL))
+    MIN_UPDATE_INTERVAL = 10
+    update_interval = max(MIN_UPDATE_INTERVAL, int(entry.options.get("update_interval", DEFAULT_UPDATE_INTERVAL)))
     coordinator = NatureRemoCoordinator(hass, api, update_interval)
 
-    coordinator.motion_threshold_minutes = int(
-        entry.options.get("motion_threshold_minutes", DEFAULT_MOTION_THRESHOLD)
-    )
+    motion_threshold = int(entry.options.get("motion_threshold_minutes", DEFAULT_MOTION_THRESHOLD_MINUTES))
+    if motion_threshold < 1:
+        motion_threshold = 1
+    coordinator.motion_threshold_minutes = motion_threshold
 
     await coordinator.async_config_entry_first_refresh()
 
@@ -34,7 +36,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     }
 
     async def handle_send_light_mode(call: ServiceCall):
-        entity_id = call.data.get("entity_id")
+        entity_ids = call.data.get("entity_id")
+        if isinstance(entity_ids, str):
+            entity_ids = [entity_ids]
+        if not entity_ids:
+            raise ServiceValidationError("entity_id is required")
+        entity_id = entity_ids[0]
         mode = call.data.get("mode", "on")
 
         target_entry_data = None
@@ -100,8 +107,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             supports_response=SupportsResponse.OPTIONAL,
         )
 
+    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
+
+
+async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

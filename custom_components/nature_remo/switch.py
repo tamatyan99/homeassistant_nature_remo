@@ -41,12 +41,13 @@ async def async_setup_entry(
                 )
             )
 
-    async_add_entities(entities)
+    async_add_entities(entities, True)
 
 
 class NatureRemoSwitchEntity(CoordinatorEntity[NatureRemoCoordinator], SwitchEntity):
     _attr_icon = "mdi:remote"
     _attr_has_entity_name = True
+    _attr_should_poll = False
 
     def __init__(
         self,
@@ -72,6 +73,10 @@ class NatureRemoSwitchEntity(CoordinatorEntity[NatureRemoCoordinator], SwitchEnt
     @property
     def device_info(self):
         return get_device_info(self._device)
+
+    @property
+    def available(self) -> bool:
+        return super().available and bool(self._commands)
 
     @property
     def is_on(self) -> bool:

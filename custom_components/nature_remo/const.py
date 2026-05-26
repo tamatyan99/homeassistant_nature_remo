@@ -1,7 +1,7 @@
 DOMAIN = "nature_remo"
 CONF_LOCAL_IP = "local_ip"
 DEFAULT_UPDATE_INTERVAL = 60
-DEFAULT_MOTION_THRESHOLD = 5
+DEFAULT_MOTION_THRESHOLD_MINUTES = 5
 
 # Home Assistant HVAC mode string to Nature Remo mode
 HA_MODE_TO_REMO_MODE = {
@@ -13,9 +13,6 @@ HA_MODE_TO_REMO_MODE = {
 }
 
 REMO_MODE_TO_HA_MODE = {v: k for k, v in HA_MODE_TO_REMO_MODE.items()}
-
-ON_COMMANDS = ["on", "オン"]
-OFF_COMMANDS = ["off", "オフ"]
 
 # Smart Meter EPC constants
 SMART_METER_EPC_COEFFICIENT = 211

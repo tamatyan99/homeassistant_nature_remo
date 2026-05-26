@@ -1,9 +1,11 @@
 import asyncio
 import logging
+from typing import Any
 from datetime import datetime
 
-from aiohttp import ClientError
+from aiohttp import ClientError, ClientTimeout
 
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 _LOGGER = logging.getLogger(__name__)
@@ -16,10 +18,11 @@ class NatureRemoAuthError(ClientError):
 
 class NatureRemoAPI:
 
-    def __init__(self, hass, token, local_ip: str | None = None) -> None:
+    def __init__(self, hass: HomeAssistant, token: str, local_ip: str | None = None) -> None:
         self._token = token
         self._session = async_get_clientsession(hass)
         self._local_ip = local_ip
+        self._headers = {"Authorization": f"Bearer {token}"}
 
     def _get_base_url(self) -> str:
         if self._local_ip:
@@ -46,48 +49,37 @@ class NatureRemoAPI:
             reset_time,
         )
 
-    async def _request(
+    async def _call_api(
         self,
         method: str,
         path: str,
+        *,
         data: dict | None = None,
         json_payload: dict | None = None,
         use_local: bool = False,
-    ) -> dict:
-        """Send an HTTP request to the Nature Remo API with common error handling."""
-        headers = {"Authorization": f"Bearer {self._token}"}
+        max_retries: int = 3,
+    ) -> dict | list:
+        """Send an HTTP request to the Nature Remo API with retry logic."""
         base_url = self._get_base_url() if use_local else NATURE_REMO_CLOUD_URL
         url = f"{base_url}{path}"
 
-        async with self._session.request(
-            method, url, headers=headers, data=data, json=json_payload
-        ) as response:
-            self._log_rate_limits(response)
-
-            if response.status == 401:
-                _LOGGER.error("Authentication failed: invalid API token")
-                raise NatureRemoAuthError(
-                    "API request failed with status 401 (Unauthorized)"
-                )
-
-            if response.status == 200:
-                return await response.json()
-
-            text = await response.text()
-            raise ClientError(
-                f"API request failed with status {response.status}: {text}"
-            )
-
-    async def _get(self, path: str):
-        headers = {"Authorization": f"Bearer {self._token}"}
-        # Data fetching always uses the cloud API; local IP is only for IR control
-        url = f"{NATURE_REMO_CLOUD_URL}{path}"
-        max_retries = 3
-
         for attempt in range(max_retries + 1):
             try:
-                async with self._session.get(url, headers=headers) as response:
+                async with self._session.request(
+                    method,
+                    url,
+                    headers=self._headers,
+                    data=data,
+                    json=json_payload,
+                    timeout=ClientTimeout(total=10),
+                ) as response:
                     self._log_rate_limits(response)
+
+                    if response.status == 401:
+                        _LOGGER.error("Authentication failed: invalid API token")
+                        raise NatureRemoAuthError(
+                            "API request failed with status 401 (Unauthorized)"
+                        )
 
                     if response.status == 429:
                         _LOGGER.warning("API rate limit hit (429)")
@@ -121,28 +113,24 @@ class NatureRemoAPI:
                                 f"API request failed with status {response.status}"
                             )
 
-                    if response.status == 401:
-                        _LOGGER.error("Authentication failed: invalid API token")
-                        raise NatureRemoAuthError(
-                            "API request failed with status 401 (Unauthorized)"
-                        )
-
-                    if response.status == 200:
-                        data = await response.json()
-                        if not isinstance(data, (list, dict)):
+                    if response.ok:
+                        data_resp = await response.json()
+                        if not isinstance(data_resp, (list, dict)):
                             _LOGGER.error(
                                 "Unexpected response type from API: %s (expected list or dict)",
-                                type(data),
+                                type(data_resp),
                             )
                             raise ValueError(
-                                f"Unexpected API response type: {type(data)}"
+                                f"Unexpected API response type: {type(data_resp)}"
                             )
-                        return data
+                        return data_resp
 
                     _LOGGER.error("Failed to fetch request: %s", response.status)
                     raise ClientError(
                         f"API request failed with status {response.status}"
                     )
+            except NatureRemoAuthError:
+                raise
             except (ClientError, TimeoutError):
                 if attempt < max_retries:
                     delay = 2 ** attempt
@@ -151,32 +139,45 @@ class NatureRemoAPI:
                     continue
                 raise
 
-    async def get_appliances(self):
+    async def _get(self, path: str) -> dict | list:
+        return await self._call_api("GET", path)
+
+    async def _request(
+        self,
+        method: str,
+        path: str,
+        data: dict | None = None,
+        json_payload: dict | None = None,
+        use_local: bool = False,
+    ) -> dict | list:
+        return await self._call_api(method, path, data=data, json_payload=json_payload, use_local=use_local)
+
+    async def get_appliances(self) -> list[dict[str, Any]]:
         return await self._get("/appliances")
 
-    async def get_devices(self):
+    async def get_devices(self) -> list[dict[str, Any]]:
         return await self._get("/devices")
 
-    async def send_command_climate(self, payload, appliance_id):
-        _LOGGER.info("Setting payload: %s", payload)
+    async def send_command_climate(self, payload: dict[str, Any], appliance_id: str) -> dict:
+        _LOGGER.debug("Setting payload: %s", payload)
         path = f"/appliances/{appliance_id}/aircon_settings"
         try:
-            result = await self._request("POST", path, data=payload)
-            _LOGGER.info("Climate command succeeded: %s", result)
+            result = await self._call_api("POST", path, data=payload)
+            _LOGGER.debug("Climate command succeeded: %s", result)
             return result
         except (ClientError, TimeoutError) as err:
             _LOGGER.error("Climate command failed: %s", err)
             raise ClientError(f"Climate command failed: {err}") from err
 
-    async def send_light_command(self, appliance_id: str, command: str):
-        _LOGGER.info(
+    async def send_light_command(self, appliance_id: str, command: str) -> dict:
+        _LOGGER.debug(
             "Send Light appliance_id: %s command: %s", appliance_id, command
         )
         path = f"/appliances/{appliance_id}/light"
         payload = {"button": command}
         try:
-            result = await self._request("POST", path, data=payload)
-            _LOGGER.info("Light command succeeded: %s", result)
+            result = await self._call_api("POST", path, data=payload)
+            _LOGGER.debug("Light command succeeded: %s", result)
             return result
         except (ClientError, TimeoutError) as err:
             _LOGGER.error("Light command failed: %s", err)
@@ -185,8 +186,8 @@ class NatureRemoAPI:
     async def learn_signal(self, appliance_id: str) -> dict:
         path = f"/appliances/{appliance_id}/IR"
         try:
-            result = await self._request("POST", path)
-            _LOGGER.info("Signal learned successfully: %s", appliance_id)
+            result = await self._call_api("POST", path)
+            _LOGGER.debug("Signal learned successfully: %s", appliance_id)
             return result
         except (ClientError, TimeoutError) as err:
             _LOGGER.error("Signal learn failed: %s", err)
@@ -259,19 +260,19 @@ class NatureRemoAPI:
     async def send_command_signal(self, signal_id: str) -> None:
         path = f"/signals/{signal_id}/send"
         try:
-            await self._request("POST", path)
+            await self._call_api("POST", path)
         except (ClientError, TimeoutError) as err:
             _LOGGER.error("Signal send failed: %s", err)
             raise ClientError(f"Signal send failed: {err}") from err
 
     async def send_local_ir_message(self, freq: int, data: list[int]) -> dict:
-        _LOGGER.info("Sending local IR message: freq=%s data_length=%s", freq, len(data))
+        _LOGGER.debug("Sending local IR message: freq=%s data_length=%s", freq, len(data))
         payload = {"freq": freq, "data": data, "format": "us"}
         try:
-            result = await self._request(
+            result = await self._call_api(
                 "POST", "/messages", json_payload=payload, use_local=True
             )
-            _LOGGER.info("Local IR message sent successfully: %s", result)
+            _LOGGER.debug("Local IR message sent successfully: %s", result)
             return result
         except (ClientError, TimeoutError) as err:
             _LOGGER.error("Local IR message failed: %s", err)
