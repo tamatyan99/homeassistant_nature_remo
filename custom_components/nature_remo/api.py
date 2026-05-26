@@ -48,8 +48,8 @@ class NatureRemoAPI:
 
     async def _get(self, path: str):
         headers = {"Authorization": f"Bearer {self._token}"}
-        base_url = self._get_base_url()
-        url = f"{base_url}{path}"
+        # Data fetching always uses the cloud API; local IP is only for IR control
+        url = f"{NATURE_REMO_CLOUD_URL}{path}"
         max_retries = 3
 
         for attempt in range(max_retries + 1):
