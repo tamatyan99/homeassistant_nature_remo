@@ -1,4 +1,4 @@
-name: HACS Validation
+name: Hassfest
 
 on:
   push:
@@ -6,19 +6,14 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
-  schedule:
-    - cron: "0 0 * * *"
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  hacs:
-    name: HACS Action
+  hassfest:
+    name: Hassfest Action
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: HACS Action
-        uses: hacs/action@22.12.0
-        with:
-          category: integration
+      - uses: home-assistant/actions/hassfest@master

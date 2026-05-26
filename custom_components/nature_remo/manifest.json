@@ -2,9 +2,10 @@
   "domain": "nature_remo",
   "name": "Nature Remo",
   "version": "0.6.1",
+  "integration_type": "hub",
   "config_flow": true,
   "dependencies": [],
-  "requirements": [],
+  "requirements": ["aiohttp>=3.8.0"],
   "codeowners": [
     "@nanosns",
     "@tamatyan99"
