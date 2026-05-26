@@ -13,3 +13,28 @@
 - **Run tests** with `python -m pytest tests/ -v` before committing test-related changes.
 - **Bump `manifest.json` version** on every release to force Home Assistant cache invalidation.
 - **Delete `__pycache__`** in `custom_components/nature_remo/` after major refactors before restarting HA, to avoid stale bytecode errors.
+
+## Cursor Cloud specific instructions
+
+### Environment
+
+- Python 3.12 is required (matches CI).
+- The sole dev dependency is `pytest-homeassistant-custom-component`, which transitively pulls in Home Assistant core, pytest, pytest-asyncio, aiohttp, and all test harness utilities.
+- A virtualenv at `/workspace/venv` is created by the update script. Activate it with `source /workspace/venv/bin/activate`.
+
+### Running tests
+
+```
+source /workspace/venv/bin/activate
+python -m pytest tests/ -v
+```
+
+All external API calls are mocked; no network access or secrets are needed for the test suite.
+
+### Linting / type checking
+
+No linter or type checker is configured in this project. CI runs only `pytest`, `hassfest` (HA manifest validation), and HACS validation.
+
+### Building / running the integration
+
+This is a Home Assistant custom component, not a standalone application. It is loaded by HA at runtime from `custom_components/nature_remo/`. There is no build step. To test the integration end-to-end with a live HA instance, you would need a Nature Remo API access token (not required for unit tests).
