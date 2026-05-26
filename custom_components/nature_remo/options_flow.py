@@ -39,7 +39,11 @@ class NatureRemoOptionsFlowHandler(config_entries.OptionsFlow):
             ext_temp_label_suffix = ": External Temperature Sensor"
             ext_humidity_label_suffix = ": External Humidity Sensor"
 
-        special_key_map = {interval_label: "update_interval", motion_threshold_label: "motion_threshold_minutes"}
+        special_key_map = {
+            interval_label: "update_interval",
+            motion_threshold_label: "motion_threshold_minutes",
+            local_ip_label: "local_ip",
+        }
         label_key_map = {}
 
         interval_default = options.get("update_interval", 60)
@@ -52,7 +56,10 @@ class NatureRemoOptionsFlowHandler(config_entries.OptionsFlow):
             vol.Optional(motion_threshold_label, default=motion_threshold_default): vol.In(
                 [1, 3, 5, 10, 15]
             ),
-            vol.Optional(local_ip_label, default=local_ip_default): str,
+            vol.Optional(local_ip_label, default=local_ip_default): vol.Any(
+                "",
+                vol.Match(r"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$")
+            ),
         }
 
         for device in devices:
@@ -91,6 +98,7 @@ class NatureRemoOptionsFlowHandler(config_entries.OptionsFlow):
             data_schema[
                 vol.Optional(
                     ext_temp_label,
+                    default=options.get(ext_temp_key),
                     description={"suggested_value": options.get(ext_temp_key)},
                 )
             ] = selector.EntitySelector(
@@ -107,6 +115,7 @@ class NatureRemoOptionsFlowHandler(config_entries.OptionsFlow):
             data_schema[
                 vol.Optional(
                     ext_humidity_label,
+                    default=options.get(ext_humidity_key),
                     description={"suggested_value": options.get(ext_humidity_key)},
                 )
             ] = selector.EntitySelector(
@@ -124,7 +133,8 @@ class NatureRemoOptionsFlowHandler(config_entries.OptionsFlow):
                 if label in special_key_map:
                     result[special_key_map[label]] = value
                 elif label in label_key_map:
-                    result[label_key_map[label]] = value
+                    if value is not None:
+                        result[label_key_map[label]] = value
 
             return self.async_create_entry(title="", data=result)
 

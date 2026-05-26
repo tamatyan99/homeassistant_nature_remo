@@ -1,4 +1,5 @@
 from homeassistant.components.event import EventEntity
+from homeassistant.core import callback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .coordinator import NatureRemoCoordinator
 from .const import DOMAIN
@@ -30,28 +31,32 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
 
 class NatureRemoMotionEvent(CoordinatorEntity[NatureRemoCoordinator], EventEntity):
+    _attr_has_entity_name = True
+    _attr_event_types = ["motion_detected"]
+
     def __init__(self, coordinator, device_id, name, device):
         super().__init__(coordinator)
         self._device = device
         self._device_id = device_id
-        self._attr_name = f"Nature Remo {name} Motion Event"
+        self._attr_name = "Motion Event"
         self._attr_unique_id = f"{device_id}_motion_event"
         self._last_motion = None
 
     @property
     def device_info(self):
-        di = {
+        info = {
             "identifiers": {(DOMAIN, self._device["device_id"])},
             "name": self._device["name"],
             "manufacturer": "Nature",
-            "model": self._device.get("firmware_version", "Nature Remo"),
+            "model": self._device.get("firmware_version") or "Nature Remo",
+            "sw_version": self._device.get("firmware_version", ""),
         }
-        if self._device.get("serial_number"):
-            di["serial_number"] = self._device["serial_number"]
-        if self._device.get("mac_address"):
-            di["hw_version"] = self._device["mac_address"]
-        return di
+        mac = self._device.get("mac_address")
+        if mac:
+            info["connections"] = {("mac", mac)}
+        return info
 
+    @callback
     def _handle_coordinator_update(self) -> None:
         motion = self.coordinator.motion_sensors.get(self._device_id)
         if motion:
@@ -59,7 +64,7 @@ class NatureRemoMotionEvent(CoordinatorEntity[NatureRemoCoordinator], EventEntit
             if last_motion is not None and last_motion != self._last_motion:
                 self._last_motion = last_motion
                 self._trigger_event(
-                    "nature_remo_motion_detected",
+                    "motion_detected",
                     {
                         "device_id": self._device_id,
                         "last_motion": last_motion.isoformat(),

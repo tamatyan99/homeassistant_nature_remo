@@ -50,7 +50,9 @@ class NatureRemoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         "Unexpected devices response type: %s", type(devices)
                     )
                     raise ValueError("Unexpected devices response type")
-            except (ClientError, TimeoutError, ValueError):
+            except TimeoutError:
+                errors["base"] = "cannot_connect"
+            except (ClientError, ValueError):
                 errors["base"] = "invalid_auth"
             else:
                 return self.async_create_entry(
@@ -75,11 +77,13 @@ class NatureRemoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 devices = await api.get_devices()
                 if not isinstance(devices, list):
                     raise ValueError("Unexpected devices response type")
-            except (ClientError, TimeoutError, ValueError):
+            except TimeoutError:
+                errors["base"] = "cannot_connect"
+            except (ClientError, ValueError):
                 errors["base"] = "invalid_auth"
             else:
                 self.hass.config_entries.async_update_entry(
-                    reauth_entry, data={"api_key": api_key}
+                    reauth_entry, data={**reauth_entry.data, "api_key": api_key}
                 )
                 await self.hass.config_entries.async_reload(reauth_entry.entry_id)
                 return self.async_abort(reason="reauth_successful")

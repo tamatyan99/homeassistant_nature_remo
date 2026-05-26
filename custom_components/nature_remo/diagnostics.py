@@ -23,6 +23,7 @@ async def async_get_config_entry_diagnostics(
 
     diagnostics: dict[str, Any] = {
         "config_entry": config_entry_data,
+        "options": dict(config_entry.options),
     }
 
     if coordinator is not None:

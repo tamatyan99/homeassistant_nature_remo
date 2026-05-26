@@ -5,6 +5,7 @@ from homeassistant.components.climate import HVACMode
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -63,11 +64,12 @@ async def async_setup_entry(
 
 
 class NatureRemoLightSelect(CoordinatorEntity[NatureRemoCoordinator], SelectEntity):
+    _attr_has_entity_name = True
 
     def __init__(self, coordinator, appliance, device, api) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"nature_remo_light_select_{appliance['appliance_id']}"
-        self._attr_name = f"Nature Remo {appliance['name']} Mode"
+        self._attr_name = "Mode"
         self._appliance = appliance
         self._device = device
         self._appliance_id = appliance["appliance_id"]
@@ -77,17 +79,17 @@ class NatureRemoLightSelect(CoordinatorEntity[NatureRemoCoordinator], SelectEnti
 
     @property
     def device_info(self):
-        di = {
+        info = {
             "identifiers": {(DOMAIN, self._device["device_id"])},
             "name": self._device["name"],
             "manufacturer": "Nature",
-            "model": self._device.get("firmware_version", "Nature Remo"),
+            "model": self._device.get("firmware_version") or "Nature Remo",
+            "sw_version": self._device.get("firmware_version", ""),
         }
-        if self._device.get("serial_number"):
-            di["serial_number"] = self._device["serial_number"]
-        if self._device.get("mac_address"):
-            di["hw_version"] = self._device["mac_address"]
-        return di
+        mac = self._device.get("mac_address")
+        if mac:
+            info["connections"] = {("mac", mac)}
+        return info
 
     @property
     def available(self) -> bool:
@@ -95,6 +97,8 @@ class NatureRemoLightSelect(CoordinatorEntity[NatureRemoCoordinator], SelectEnti
 
     @callback
     def _handle_coordinator_update(self) -> None:
+        if self.coordinator.data is None:
+            return
         appliance = self.coordinator.data.get(self._appliance_id, {})
         if appliance and "light" in appliance:
             effect_buttons = appliance["light"].get("buttons", [])
@@ -105,22 +109,26 @@ class NatureRemoLightSelect(CoordinatorEntity[NatureRemoCoordinator], SelectEnti
 
     async def async_select_option(self, option: str) -> None:
         if option not in self._attr_options:
-            raise ValueError(f"Option '{option}' is not supported by this light")
+            raise HomeAssistantError(f"Invalid option: {option}")
 
+        prev_option = self._attr_current_option
         try:
             await self._api.send_light_command(self._appliance_id, option)
             self._attr_current_option = option
-        except (ClientError, TimeoutError):
-            _LOGGER.error("Failed to set light mode")
+        except Exception:
+            self._attr_current_option = prev_option
+            self.async_write_ha_state()
+            raise
         self.async_write_ha_state()
 
 
 class NatureRemoAcPresetSelect(CoordinatorEntity[NatureRemoCoordinator], SelectEntity):
+    _attr_has_entity_name = True
 
     def __init__(self, coordinator, appliance, device, api) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"nature_remo_ac_preset_{appliance['appliance_id']}"
-        self._attr_name = f"Nature Remo {appliance['name']} Preset"
+        self._attr_name = "Preset"
         self._appliance = appliance
         self._device = device
         self._appliance_id = appliance["appliance_id"]
@@ -131,17 +139,17 @@ class NatureRemoAcPresetSelect(CoordinatorEntity[NatureRemoCoordinator], SelectE
 
     @property
     def device_info(self):
-        di = {
+        info = {
             "identifiers": {(DOMAIN, self._device["device_id"])},
             "name": self._device["name"],
             "manufacturer": "Nature",
-            "model": self._device.get("firmware_version", "Nature Remo"),
+            "model": self._device.get("firmware_version") or "Nature Remo",
+            "sw_version": self._device.get("firmware_version", ""),
         }
-        if self._device.get("serial_number"):
-            di["serial_number"] = self._device["serial_number"]
-        if self._device.get("mac_address"):
-            di["hw_version"] = self._device["mac_address"]
-        return di
+        mac = self._device.get("mac_address")
+        if mac:
+            info["connections"] = {("mac", mac)}
+        return info
 
     @property
     def available(self) -> bool:
@@ -151,23 +159,52 @@ class NatureRemoAcPresetSelect(CoordinatorEntity[NatureRemoCoordinator], SelectE
     def _handle_coordinator_update(self) -> None:
         appliance = self.coordinator.data.get(self._appliance_id, {})
         if appliance and "settings" in appliance:
-            remo_mode = appliance["settings"].get("mode", "")
+            settings = appliance["settings"]
+            if settings.get("button") == "eco":
+                self._attr_current_option = "eco"
+            else:
+                self._attr_current_option = "none"
+            remo_mode = settings.get("mode", "")
             hvac_mode = REVERSE_MODE_MAP.get(remo_mode)
             if hvac_mode is not None:
                 self._hvac_mode = hvac_mode
         self.async_write_ha_state()
 
     async def async_select_option(self, option: str) -> None:
+        if option not in self._attr_options:
+            raise HomeAssistantError(f"Invalid option: {option}")
+
         if option == "eco":
             operation_mode = MODE_MAP_HA.get(self._hvac_mode)
             if operation_mode is None:
                 return
-            payload = {"operation_mode": operation_mode, "temperature": "26"}
+            payload = {"button": "eco", "temperature": "26"}
+            prev_option = self._attr_current_option
             try:
                 await self._api.send_command_climate(payload, self._appliance_id)
                 self._attr_current_option = "eco"
-            except (ClientError, TimeoutError):
-                _LOGGER.error("Failed to set AC preset mode")
+            except Exception:
+                self._attr_current_option = prev_option
+                self.async_write_ha_state()
+                raise
         else:
-            self._attr_current_option = "none"
+            operation_mode = MODE_MAP_HA.get(self._hvac_mode)
+            if operation_mode is None:
+                self._attr_current_option = None
+                self.async_write_ha_state()
+                return
+            appliance = self.coordinator.data.get(self._appliance_id, {})
+            temp = appliance.get("settings", {}).get("temp", "25") if appliance else "25"
+            payload = {
+                "operation_mode": operation_mode,
+                "temperature": str(temp),
+            }
+            prev_option = self._attr_current_option
+            try:
+                await self._api.send_command_climate(payload, self._appliance_id)
+                self._attr_current_option = None
+            except Exception:
+                self._attr_current_option = prev_option
+                self.async_write_ha_state()
+                raise
         self.async_write_ha_state()

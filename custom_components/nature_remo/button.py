@@ -54,6 +54,7 @@ class NatureRemoLearnSignalButton(CoordinatorEntity[NatureRemoCoordinator], Butt
     """Button to learn a new IR signal for an appliance."""
 
     _attr_icon = "mdi:remote"
+    _attr_has_entity_name = True
 
     def __init__(
         self,
@@ -63,24 +64,24 @@ class NatureRemoLearnSignalButton(CoordinatorEntity[NatureRemoCoordinator], Butt
     ) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"nature_remo_learn_signal_{remote_info['appliance_id']}"
-        self._attr_name = f"Nature Remo {remote_info['name']} Learn Signal"
+        self._attr_name = "Learn Signal"
         self._api = api
         self._device = remote_info["device"]
         self._appliance_id = remote_info["appliance_id"]
 
     @property
     def device_info(self):
-        di = {
+        info = {
             "identifiers": {(DOMAIN, self._device["device_id"])},
             "name": self._device["name"],
             "manufacturer": "Nature",
-            "model": self._device.get("firmware_version", "Nature Remo"),
+            "model": self._device.get("firmware_version") or "Nature Remo",
+            "sw_version": self._device.get("firmware_version", ""),
         }
-        if self._device.get("serial_number"):
-            di["serial_number"] = self._device["serial_number"]
-        if self._device.get("mac_address"):
-            di["hw_version"] = self._device["mac_address"]
-        return di
+        mac = self._device.get("mac_address")
+        if mac:
+            info["connections"] = {("mac", mac)}
+        return info
 
     async def async_press(self) -> None:
         try:
@@ -96,6 +97,7 @@ class NatureRemoRefreshDataButton(CoordinatorEntity[NatureRemoCoordinator], Butt
     """Button to manually refresh coordinator data."""
 
     _attr_icon = "mdi:refresh"
+    _attr_has_entity_name = True
 
     def __init__(
         self,
@@ -104,22 +106,22 @@ class NatureRemoRefreshDataButton(CoordinatorEntity[NatureRemoCoordinator], Butt
     ) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"nature_remo_refresh_{device_info['device_id']}"
-        self._attr_name = f"Nature Remo {device_info['name']} Refresh Data"
+        self._attr_name = "Refresh Data"
         self._device = device_info
 
     @property
     def device_info(self):
-        di = {
+        info = {
             "identifiers": {(DOMAIN, self._device["device_id"])},
             "name": self._device["name"],
             "manufacturer": "Nature",
-            "model": self._device.get("firmware_version", "Nature Remo"),
+            "model": self._device.get("firmware_version") or "Nature Remo",
+            "sw_version": self._device.get("firmware_version", ""),
         }
-        if self._device.get("serial_number"):
-            di["serial_number"] = self._device["serial_number"]
-        if self._device.get("mac_address"):
-            di["hw_version"] = self._device["mac_address"]
-        return di
+        mac = self._device.get("mac_address")
+        if mac:
+            info["connections"] = {("mac", mac)}
+        return info
 
     async def async_press(self) -> None:
         await self.coordinator.async_request_refresh()

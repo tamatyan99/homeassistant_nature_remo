@@ -5,7 +5,7 @@ from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import ServiceValidationError
 from .api import NatureRemoAPI
 from .coordinator import NatureRemoCoordinator
-from .const import DOMAIN
+from .const import DOMAIN, DEFAULT_UPDATE_INTERVAL, DEFAULT_MOTION_THRESHOLD
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS = ["climate", "light", "sensor", "remote", "switch", "binary_sensor", "event", "button", "select"]
@@ -19,11 +19,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     local_ip = entry.options.get("local_ip", "")
     api = NatureRemoAPI(hass, entry.data["api_key"], local_ip=local_ip if local_ip else None)
 
-    update_interval = int(entry.options.get("update_interval", 60))
+    update_interval = int(entry.options.get("update_interval", DEFAULT_UPDATE_INTERVAL))
     coordinator = NatureRemoCoordinator(hass, api, update_interval)
 
     coordinator.motion_threshold_minutes = int(
-        entry.options.get("motion_threshold_minutes", 5)
+        entry.options.get("motion_threshold_minutes", DEFAULT_MOTION_THRESHOLD)
     )
 
     await coordinator.async_config_entry_first_refresh()
@@ -37,18 +37,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entity_id = call.data.get("entity_id")
         mode = call.data.get("mode", "on")
 
-        _LOGGER.debug("coordinator.entity_map: %s", coordinator.entity_map)
-        light_entity = coordinator.entity_map.get(entity_id)
-        if light_entity is None:
-            raise ServiceValidationError(
-                f"{entity_id} not found in coordinator.entity_map"
-            )
+        target_entry_data = None
+        light_entity = None
+        for entry_data in hass.data[DOMAIN].values():
+            coordinator = entry_data["coordinator"]
+            light_entity = coordinator.entity_map.get(entity_id)
+            if light_entity is not None:
+                target_entry_data = entry_data
+                break
+        else:
+            raise ServiceValidationError(f"{entity_id} not found")
 
         if mode not in light_entity.supported_effects:
             raise ServiceValidationError(
-                f"Effect '{mode}' is not supported by this light"
+                f"Effect '{mode}' is not supported"
             )
 
+        api = target_entry_data["api"]
         await api.send_light_command(light_entity.appliance_id, mode)
         light_entity.set_mode(mode)
 
@@ -60,7 +65,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if not appliance_id:
             raise ServiceValidationError("appliance_id is required")
 
-        result = await api.learn_signal(appliance_id)
+        target_api = None
+        for entry_data in hass.data[DOMAIN].values():
+            coordinator = entry_data["coordinator"]
+            if (
+                appliance_id in coordinator.aircons
+                or appliance_id in coordinator.lights
+                or appliance_id in coordinator.ir_remotes
+            ):
+                target_api = entry_data["api"]
+                break
+        else:
+            target_api = api
+
+        result = await target_api.learn_signal(appliance_id)
         return result
 
     if not hass.services.has_service(DOMAIN, "send_light_mode"):

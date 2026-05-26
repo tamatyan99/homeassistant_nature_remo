@@ -1,7 +1,7 @@
 import logging
 
 from aiohttp import ClientError
-from homeassistant.components.light import LightEntity, ColorMode
+from homeassistant.components.light import LightEntity, ColorMode, LightEntityFeature
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
@@ -40,11 +40,12 @@ async def async_setup_entry(
 
 
 class NatureRemoLight(CoordinatorEntity[NatureRemoCoordinator], LightEntity):
+    _attr_has_entity_name = True
 
     def __init__(self, coordinator, appliance, device, api) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"nature_remo_light_{appliance['appliance_id']}"
-        self._attr_name = f"Nature Remo {appliance['name']}"
+        self._attr_name = None
         self._appliance = appliance
         self._device = device
         self._appliance_id = appliance["appliance_id"]
@@ -64,17 +65,17 @@ class NatureRemoLight(CoordinatorEntity[NatureRemoCoordinator], LightEntity):
 
     @property
     def device_info(self):
-        di = {
+        info = {
             "identifiers": {(DOMAIN, self._device["device_id"])},
             "name": self._device["name"],
             "manufacturer": "Nature",
-            "model": self._device.get("firmware_version", "Nature Remo"),
+            "model": self._device.get("firmware_version") or "Nature Remo",
+            "sw_version": self._device.get("firmware_version", ""),
         }
-        if self._device.get("serial_number"):
-            di["serial_number"] = self._device["serial_number"]
-        if self._device.get("mac_address"):
-            di["hw_version"] = self._device["mac_address"]
-        return di
+        mac = self._device.get("mac_address")
+        if mac:
+            info["connections"] = {("mac", mac)}
+        return info
 
     @property
     def supported_color_modes(self):
@@ -87,6 +88,10 @@ class NatureRemoLight(CoordinatorEntity[NatureRemoCoordinator], LightEntity):
     @property
     def is_on(self):
         return self._is_on
+
+    @property
+    def supported_features(self):
+        return LightEntityFeature.ON_OFF | LightEntityFeature.EFFECT
 
     @property
     def extra_state_attributes(self):
@@ -112,6 +117,8 @@ class NatureRemoLight(CoordinatorEntity[NatureRemoCoordinator], LightEntity):
     @callback
     def _handle_coordinator_update(self) -> None:
         _LOGGER.debug("[%s] Start _handle_coordinator_update.", self._attr_name)
+        if self.coordinator.data is None:
+            return
         appliance = self.coordinator.data.get(self._appliance_id, {})
 
         if appliance and "light" in appliance:
@@ -131,27 +138,37 @@ class NatureRemoLight(CoordinatorEntity[NatureRemoCoordinator], LightEntity):
 
     async def async_turn_on(self, **kwargs):
         _LOGGER.debug("kwargs: %s", kwargs)
-        mode = kwargs.get("remo_light_mode", "on")
+        effect = kwargs.get("effect") or kwargs.get("remo_light_mode", "on")
 
-        if mode not in self._supported_effects:
-            raise HomeAssistantError(f"Effect '{mode}' is not supported by this light")
+        if effect not in self._supported_effects:
+            raise HomeAssistantError(f"Effect '{effect}' is not supported by this light")
 
+        prev_is_on = self._is_on
+        prev_mode = self._last_mode
         try:
-            response = await self._api.send_light_command(self._appliance_id, mode)
+            response = await self._api.send_light_command(self._appliance_id, effect)
             _LOGGER.debug(
                 "[%s] send_light_command response: %s", self._attr_name, response
             )
-            self._is_on = mode != "off"
-            self._last_mode = mode
-        except (ClientError, TimeoutError):
-            _LOGGER.error("Failed to turn on light")
+            self._is_on = effect != "off"
+            self._last_mode = effect
+        except Exception:
+            self._is_on = prev_is_on
+            self._last_mode = prev_mode
+            self.async_write_ha_state()
+            raise
         self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs):
+        prev_is_on = self._is_on
+        prev_mode = self._last_mode
         try:
             await self._api.send_light_command(self._appliance_id, "off")
             self._is_on = False
             self._last_mode = "off"
-        except (ClientError, TimeoutError):
-            _LOGGER.error("Failed to turn off light")
+        except Exception:
+            self._is_on = prev_is_on
+            self._last_mode = prev_mode
+            self.async_write_ha_state()
+            raise
         self.async_write_ha_state()

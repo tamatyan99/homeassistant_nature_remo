@@ -24,7 +24,7 @@ SENSOR_TYPES = {
     },
     "il": {
         "name": "Illuminance",
-        "unit": None,
+        "unit": "lx",
         "device_class": SensorDeviceClass.ILLUMINANCE,
         "state_class": SensorStateClass.MEASUREMENT,
     },
@@ -115,10 +115,12 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
 
 class NatureRemoSensor(CoordinatorEntity[NatureRemoCoordinator], SensorEntity):
+    _attr_has_entity_name = True
+
     def __init__(self, coordinator, appliance_id, name, device, key, description):
         super().__init__(coordinator)
         self._attr_unique_id = f"nature_remo_sensor_{appliance_id}_{key}"
-        self._attr_name = f"Nature Remo {name} {description['name']}"
+        self._attr_name = description["name"]
         self._device = device
         self._appliance_id = appliance_id
         self._attr_native_unit_of_measurement = description["unit"]
@@ -128,17 +130,17 @@ class NatureRemoSensor(CoordinatorEntity[NatureRemoCoordinator], SensorEntity):
 
     @property
     def device_info(self):
-        di = {
+        info = {
             "identifiers": {(DOMAIN, self._device["device_id"])},
             "name": self._device["name"],
             "manufacturer": "Nature",
-            "model": self._device.get("firmware_version", "Nature Remo"),
+            "model": self._device.get("firmware_version") or "Nature Remo",
+            "sw_version": self._device.get("firmware_version", ""),
         }
-        if self._device.get("serial_number"):
-            di["serial_number"] = self._device["serial_number"]
-        if self._device.get("mac_address"):
-            di["hw_version"] = self._device["mac_address"]
-        return di
+        mac = self._device.get("mac_address")
+        if mac:
+            info["connections"] = {("mac", mac)}
+        return info
 
     @property
     def native_value(self):
@@ -167,28 +169,30 @@ class NatureRemoSensor(CoordinatorEntity[NatureRemoCoordinator], SensorEntity):
 class NatureRemoMotionTimeSensor(
     CoordinatorEntity[NatureRemoCoordinator], SensorEntity
 ):
+    _attr_has_entity_name = True
+
     def __init__(self, coordinator, device_id, name, device):
         super().__init__(coordinator)
         self._device_id = device_id
         self._device = device
-        self._attr_name = f"Nature Remo {name} Last Motion"
+        self._attr_name = "Last Motion"
         self._attr_unique_id = f"{device_id}_last_motion"
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
         self._attr_native_unit_of_measurement = None
 
     @property
     def device_info(self):
-        di = {
+        info = {
             "identifiers": {(DOMAIN, self._device["device_id"])},
             "name": self._device["name"],
             "manufacturer": "Nature",
-            "model": self._device.get("firmware_version", "Nature Remo"),
+            "model": self._device.get("firmware_version") or "Nature Remo",
+            "sw_version": self._device.get("firmware_version", ""),
         }
-        if self._device.get("serial_number"):
-            di["serial_number"] = self._device["serial_number"]
-        if self._device.get("mac_address"):
-            di["hw_version"] = self._device["mac_address"]
-        return di
+        mac = self._device.get("mac_address")
+        if mac:
+            info["connections"] = {("mac", mac)}
+        return info
 
     @property
     def native_value(self):
@@ -196,4 +200,3 @@ class NatureRemoMotionTimeSensor(
         if motion and "last_motion" in motion:
             return motion["last_motion"]
         return None
-

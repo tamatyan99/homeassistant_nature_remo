@@ -56,7 +56,7 @@ class NatureRemoCoordinator(DataUpdateCoordinator):
                 mac_address = device.get("mac_address", "")
 
                 motion_event = newest_events.get("mo")
-                if motion_event:
+                if motion_event and isinstance(motion_event, dict):
                     created_at_str = motion_event.get("created_at")
                     if created_at_str:
                         try:
@@ -72,7 +72,7 @@ class NatureRemoCoordinator(DataUpdateCoordinator):
                             created_at = None
                         if created_at is not None:
                             now = datetime.now(created_at.tzinfo)
-                            is_active = (now - created_at) < timedelta(
+                            is_active = abs(now - created_at) < timedelta(
                                 minutes=self.motion_threshold_minutes
                             )
                             new_motion_sensors[device_id] = {
@@ -190,12 +190,19 @@ class NatureRemoCoordinator(DataUpdateCoordinator):
             self.ir_remotes = new_ir_remotes
             self.motion_sensors = new_motion_sensors
 
-            return {ac["id"]: ac for ac in appliances}
+            result = {}
+            for appliance in appliances:
+                appliance_id = appliance.get("id")
+                if appliance_id is not None:
+                    result[appliance_id] = appliance
+            return result
         except NatureRemoAuthError as err:
             raise ConfigEntryAuthFailed(f"Authentication failed: {err}") from err
         except ClientError as err:
             raise UpdateFailed(f"通信エラー: {err}") from err
         except TimeoutError as err:
             raise UpdateFailed("APIの応答がタイムアウトしました") from err
+        except (TypeError, AttributeError, KeyError) as err:
+            raise UpdateFailed(f"データ処理エラー: {err}") from err
         except ValueError as err:
             raise UpdateFailed(f"JSONデータのパースエラー: {err}") from err

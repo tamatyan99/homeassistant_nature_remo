@@ -39,6 +39,7 @@ async def async_setup_entry(
 
 
 class NatureRemoRemoteEntity(CoordinatorEntity[NatureRemoCoordinator], RemoteEntity):
+    _attr_has_entity_name = True
 
     def __init__(
         self,
@@ -48,7 +49,7 @@ class NatureRemoRemoteEntity(CoordinatorEntity[NatureRemoCoordinator], RemoteEnt
     ) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"nature_remo_remote_{remote_info['appliance_id']}"
-        self._attr_name = f"Nature Remo {remote_info['name']}"
+        self._attr_name = None
         self._api = api
         self._device = remote_info["device"]
         self._appliance_id = remote_info["appliance_id"]
@@ -65,17 +66,17 @@ class NatureRemoRemoteEntity(CoordinatorEntity[NatureRemoCoordinator], RemoteEnt
 
     @property
     def device_info(self):
-        di = {
+        info = {
             "identifiers": {(DOMAIN, self._device["device_id"])},
             "name": self._device["name"],
             "manufacturer": "Nature",
-            "model": self._device.get("firmware_version", "Nature Remo"),
+            "model": self._device.get("firmware_version") or "Nature Remo",
+            "sw_version": self._device.get("firmware_version", ""),
         }
-        if self._device.get("serial_number"):
-            di["serial_number"] = self._device["serial_number"]
-        if self._device.get("mac_address"):
-            di["hw_version"] = self._device["mac_address"]
-        return di
+        mac = self._device.get("mac_address")
+        if mac:
+            info["connections"] = {("mac", mac)}
+        return info
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -87,10 +88,6 @@ class NatureRemoRemoteEntity(CoordinatorEntity[NatureRemoCoordinator], RemoteEnt
     @property
     def available(self) -> bool:
         return super().available and bool(self._commands)
-
-    @property
-    def state(self) -> str | None:
-        return self._attr_state
 
     async def async_send_command(self, command: str | list[str], **kwargs: Any) -> None:
         if isinstance(command, str):
@@ -115,7 +112,8 @@ class NatureRemoRemoteEntity(CoordinatorEntity[NatureRemoCoordinator], RemoteEnt
                 self._attr_state = "off"
             else:
                 self._attr_state = cmd
-            self.async_write_ha_state()
+
+        self.async_write_ha_state()
 
     async def async_turn_on(self) -> None:
         if self._power_on_id:
