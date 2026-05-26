@@ -98,7 +98,7 @@ class NatureRemoRemoteEntity(CoordinatorEntity[NatureRemoCoordinator], RemoteEnt
     async def async_send_command(self, command: list[str], **kwargs: Any) -> None:
         failed = []
         for cmd in command:
-            signal_id = self._commands.get(cmd)
+            signal_id = self._commands.get(cmd.lower())
             if signal_id:
                 try:
                     await self._api.send_command_signal(signal_id)
