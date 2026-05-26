@@ -10,8 +10,6 @@ send_light_mode:
       description: Select or input the desired mode (e.g., on, night).
       selector:
         text:
-  response:
-    optional: true
 
 learn_signal:
   name: Nature Remo Learn Signal
@@ -23,5 +21,3 @@ learn_signal:
       example: "12345-abc"
       selector:
         text: {}
-  response:
-    optional: true
