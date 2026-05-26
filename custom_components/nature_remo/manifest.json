@@ -8,10 +8,11 @@
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/tamatyan99/homeassistant_nature_remo#readme",
+  "homeassistant": "2023.8.0",
   "integration_type": "hub",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/tamatyan99/homeassistant_nature_remo/issues",
   "loggers": ["custom_components.nature_remo"],
   "requirements": [],
-  "version": "0.6.2"
+  "version": "0.6.3"
 }

@@ -12,7 +12,7 @@ from homeassistant.helpers.update_coordinator import (
 )
 from homeassistant.util.dt import now as dt_now
 
-from .api import NatureRemoAuthError
+from .api import NatureRemoAPI, NatureRemoAuthError
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -20,7 +20,9 @@ _LOGGER = logging.getLogger(__name__)
 
 class NatureRemoCoordinator(DataUpdateCoordinator):
 
-    def __init__(self, hass: HomeAssistant, api, update_interval: int = 60) -> None:
+    def __init__(
+        self, hass: HomeAssistant, api: NatureRemoAPI, update_interval: int = 60
+    ) -> None:
         super().__init__(
             hass,
             _LOGGER,
@@ -37,7 +39,7 @@ class NatureRemoCoordinator(DataUpdateCoordinator):
         self.entity_map: dict[str, Any] = {}
         self.motion_threshold_minutes: int = 5
 
-    async def _async_update_data(self):
+    async def _async_update_data(self) -> dict:
         _LOGGER.debug("NatureRemoCoordinator.async_update_data start.")
         try:
             new_devices = {}

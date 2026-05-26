@@ -15,17 +15,19 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
+from .const import DOMAIN, HA_MODE_TO_REMO_MODE, REMO_MODE_TO_HA_MODE
 from .coordinator import NatureRemoCoordinator
+from .entity import get_device_info
 
 _LOGGER = logging.getLogger(__name__)
 
-from .const import DOMAIN, HA_MODE_TO_REMO_MODE, REMO_MODE_TO_HA_MODE
-from .entity import get_device_info
-
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
-):
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
     _LOGGER.debug("Nature Remo Climate: async_setup_entry called")
 
     data = hass.data[DOMAIN][entry.entry_id]
@@ -412,7 +414,7 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
         self._handle_coordinator_update()
 
     async def async_set_hvac_mode(self, hvac_mode):
-        _LOGGER.info("Setting HVAC mode: %s", hvac_mode)
+        _LOGGER.debug("Setting HVAC mode: %s", hvac_mode)
         if hvac_mode not in self.hvac_modes:
             raise HomeAssistantError(f"Unsupported HVAC mode: {hvac_mode}")
 
@@ -433,7 +435,7 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
             self.async_write_ha_state()
             raise
 
-        _LOGGER.info("Set HVACMode: %s", response)
+        _LOGGER.debug("Set HVACMode: %s", response)
         self._preset_mode = PRESET_NONE
         hvac_mode_result = self.get_remo_mode_to_hvac_mode(response.get("mode", ""))
         if hvac_mode_result is not None:

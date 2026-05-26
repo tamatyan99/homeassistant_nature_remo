@@ -164,13 +164,7 @@ Home Assistantの設定画面からエンティティを選択することで、
 
 ## 開発・貢献について
 
-バグ報告、機能要望、プルリクエストを歓迎します！
-
-1. このリポジトリをフォークする
-2. 機能ブランチを作成する（`git checkout -b feature/amazing-feature`）
-3. 変更をコミットする（`git commit -m 'feat: Add amazing feature'`）
-4. ブランチにプッシュする（`git push origin feature/amazing-feature`）
-5. プルリクエストを作成する
+バグ報告、機能要望、プルリクエストを歓迎します。開発環境のセットアップやテスト手順は [CONTRIBUTING.md](CONTRIBUTING.md) を参照してください。
 
 大きな変更や新機能の追加については、まずissueを立てて方針を相談してください。
 

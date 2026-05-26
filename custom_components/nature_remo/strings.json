@@ -34,9 +34,85 @@
         "data": {
           "update_interval": "Update Interval (seconds)",
           "motion_threshold_minutes": "Motion Detection Threshold (minutes)",
-          "local_ip": "Nature Remo Local IP Address"
+          "local_ip": "Nature Remo Local IP Address",
+          "external_temperature": "External temperature sensor",
+          "external_humidity": "External humidity sensor"
         }
       }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "temperature": {
+        "name": "Temperature"
+      },
+      "humidity": {
+        "name": "Humidity"
+      },
+      "illuminance": {
+        "name": "Illuminance"
+      },
+      "pressure": {
+        "name": "Pressure"
+      },
+      "buy_power": {
+        "name": "Buy Power"
+      },
+      "sold_power": {
+        "name": "Sold Power"
+      },
+      "current_power": {
+        "name": "Current Power"
+      },
+      "last_motion": {
+        "name": "Last Motion"
+      }
+    },
+    "binary_sensor": {
+      "motion": {
+        "name": "Motion"
+      }
+    },
+    "event": {
+      "motion": {
+        "name": "Motion Event"
+      }
+    },
+    "button": {
+      "learn_signal": {
+        "name": "Learn Signal"
+      },
+      "refresh_data": {
+        "name": "Refresh Data"
+      }
+    },
+    "select": {
+      "light_mode": {
+        "name": "Mode"
+      },
+      "ac_preset": {
+        "name": "Preset"
+      }
+    }
+  },
+  "exceptions": {
+    "entity_id_required": {
+      "message": "entity_id is required"
+    },
+    "entity_not_found": {
+      "message": "Entity {entity_id} was not found"
+    },
+    "unsupported_effect": {
+      "message": "Effect '{mode}' is not supported"
+    },
+    "appliance_id_required": {
+      "message": "appliance_id is required"
+    },
+    "appliance_not_found": {
+      "message": "appliance_id '{appliance_id}' was not found in any configured entry"
+    },
+    "learn_signal_failed": {
+      "message": "Failed to learn signal for {entity}"
     }
   },
   "services": {
@@ -44,6 +120,10 @@
       "name": "Nature Remo Light Mode",
       "description": "Send command to the selected light using button name.",
       "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "The light entity to control."
+        },
         "mode": {
           "name": "Mode",
           "description": "Select or input the desired mode (e.g., on, night)."

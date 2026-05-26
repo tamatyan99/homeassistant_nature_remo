@@ -5,9 +5,11 @@ from typing import Any
 
 from aiohttp import ClientError
 from homeassistant.components.button import ButtonEntity
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -57,6 +59,8 @@ class NatureRemoLearnSignalButton(CoordinatorEntity[NatureRemoCoordinator], Butt
     _attr_icon = "mdi:remote"
     _attr_has_entity_name = True
     _attr_should_poll = False
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_translation_key = "learn_signal"
 
     def __init__(
         self,
@@ -66,13 +70,12 @@ class NatureRemoLearnSignalButton(CoordinatorEntity[NatureRemoCoordinator], Butt
     ) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"nature_remo_learn_signal_{remote_info['appliance_id']}"
-        self._attr_name = "Learn Signal"
         self._api = api
         self._device = remote_info["device"]
         self._appliance_id = remote_info["appliance_id"]
 
     @property
-    def device_info(self):
+    def device_info(self) -> DeviceInfo:
         return get_device_info(self._device)
 
     async def async_press(self) -> None:
@@ -81,7 +84,9 @@ class NatureRemoLearnSignalButton(CoordinatorEntity[NatureRemoCoordinator], Butt
         except (ClientError, TimeoutError) as err:
             _LOGGER.error("Failed to learn signal for %s: %s", self._appliance_id, err)
             raise HomeAssistantError(
-                f"Learn signal failed for {self.name}"
+                translation_domain=DOMAIN,
+                translation_key="learn_signal_failed",
+                translation_placeholders={"entity": self.entity_id},
             ) from err
 
 
@@ -91,6 +96,8 @@ class NatureRemoRefreshDataButton(CoordinatorEntity[NatureRemoCoordinator], Butt
     _attr_icon = "mdi:refresh"
     _attr_has_entity_name = True
     _attr_should_poll = False
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_translation_key = "refresh_data"
 
     def __init__(
         self,
@@ -99,11 +106,10 @@ class NatureRemoRefreshDataButton(CoordinatorEntity[NatureRemoCoordinator], Butt
     ) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"nature_remo_refresh_{device_info['device_id']}"
-        self._attr_name = "Refresh Data"
         self._device = device_info
 
     @property
-    def device_info(self):
+    def device_info(self) -> DeviceInfo:
         return get_device_info(self._device)
 
     async def async_press(self) -> None:
