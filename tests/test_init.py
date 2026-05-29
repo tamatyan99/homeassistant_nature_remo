@@ -121,6 +121,34 @@ async def test_unload_entry_keeps_coordinator_running_when_platform_unload_fails
     assert hass.data[DOMAIN][entry.entry_id]["coordinator"] is coordinator_mock
 
 
+async def test_unload_entry_handles_missing_entry_data_after_failed_setup(
+    hass, monkeypatch
+):
+    """Test unload after setup failed before the coordinator was stored."""
+    from custom_components.nature_remo import PLATFORMS, async_unload_entry
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"api_key": "test_key"},
+        entry_id="test-entry-missing-data",
+    )
+    entry.add_to_hass(hass)
+    hass.data[DOMAIN] = {}
+
+    async_unload_platforms = AsyncMock(return_value=True)
+    monkeypatch.setattr(
+        hass.config_entries,
+        "async_unload_platforms",
+        async_unload_platforms,
+    )
+
+    result = await async_unload_entry(hass, entry)
+
+    assert result is True
+    async_unload_platforms.assert_awaited_once_with(entry, PLATFORMS)
+    assert DOMAIN not in hass.data
+
+
 async def test_send_light_mode_service(hass):
     """Test send_light_mode service with entity_id in data."""
     entry = MockConfigEntry(
