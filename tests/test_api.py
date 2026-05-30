@@ -24,6 +24,7 @@ def mock_api_sleep():
 def _mock_response(status=200, json_data=None, text=None):
     response = MagicMock()
     response.status = status
+    response.ok = 200 <= status < 300
     response.headers = {}
     response.json = AsyncMock(return_value=json_data)
     response.text = AsyncMock(return_value=text or "")
@@ -133,26 +134,24 @@ class TestNatureRemoAPI:
     async def test_send_command_climate_failure(self, api):
         mock_resp = _mock_response(status=500, text="Internal Server Error")
         api._session.request = _mock_session_method(mock_resp)
-        with pytest.raises(ClientError, match="Climate command failed"):
+        with pytest.raises(ClientError, match="API request failed with status 500"):
             await api.send_command_climate({}, "app-1")
 
     async def test_send_local_ir_message_uses_cloud_by_default(self, api):
         mock_resp = _mock_response(status=200, json_data={"status": "sent"})
-        api._session.request = _mock_session_method(mock_resp)
+        api._session.post = _mock_session_method(mock_resp)
         result = await api.send_local_ir_message(38, [100, 200])
         assert result == {"status": "sent"}
-        call_args = api._session.request.call_args
-        assert call_args[0][0] == "POST"
-        assert call_args[0][1] == f"{NATURE_REMO_CLOUD_URL}/messages"
+        call_args = api._session.post.call_args
+        assert call_args[0][0] == f"{NATURE_REMO_CLOUD_URL}/messages"
 
     async def test_send_local_ir_message_uses_local_ip(self, api_with_local_ip):
         mock_resp = _mock_response(status=200, json_data={"status": "sent"})
-        api_with_local_ip._session.request = _mock_session_method(mock_resp)
+        api_with_local_ip._session.post = _mock_session_method(mock_resp)
         result = await api_with_local_ip.send_local_ir_message(38, [100, 200])
         assert result == {"status": "sent"}
-        call_args = api_with_local_ip._session.request.call_args
-        assert call_args[0][0] == "POST"
-        assert call_args[0][1] == "http://192.168.1.100/messages"
+        call_args = api_with_local_ip._session.post.call_args
+        assert call_args[0][0] == "http://192.168.1.100/messages"
         assert call_args[1]["headers"]["Authorization"] == "Bearer test-token"
 
     async def test_get_retries_on_429_then_succeeds(self, api):
@@ -169,14 +168,14 @@ class TestNatureRemoAPI:
 
     async def test_get_raises_after_max_retries_on_429(self, api):
         resp_429 = _mock_response(status=429)
-        responses = [resp_429, resp_429, resp_429, resp_429]
+        responses = [resp_429, resp_429]
 
         api._session.request = MagicMock(
             side_effect=lambda *a, **k: _mock_context_manager(responses.pop(0))
         )
         with pytest.raises(ClientError, match="API request failed with status 429"):
             await api._get("/devices")
-        assert api._session.request.call_count == 4
+        assert api._session.request.call_count == 2
 
     async def test_get_uses_retry_after_header(self, api):
         resp_429 = _mock_response(status=429)
@@ -198,17 +197,15 @@ class TestNatureRemoAPI:
             await api._get("/devices")
         assert api._session.request.call_count == 1
 
-    async def test_call_api_retries_on_500_then_succeeds(self, api):
+    async def test_call_api_does_not_retry_on_500(self, api):
         resp_500 = _mock_response(status=500)
-        resp_200 = _mock_response(status=200, json_data={"status": "ok"})
-        responses = [resp_500, resp_200]
 
         api._session.request = MagicMock(
-            side_effect=lambda *a, **k: _mock_context_manager(responses.pop(0))
+            side_effect=lambda *a, **k: _mock_context_manager(resp_500)
         )
-        result = await api._call_api("GET", "/devices")
-        assert result == {"status": "ok"}
-        assert api._session.request.call_count == 2
+        with pytest.raises(ClientError, match="API request failed with status 500"):
+            await api._call_api("GET", "/devices")
+        assert api._session.request.call_count == 1
 
     async def test_call_api_retries_on_timeout_then_succeeds(self, api):
         resp_200 = _mock_response(status=200, json_data={"status": "ok"})

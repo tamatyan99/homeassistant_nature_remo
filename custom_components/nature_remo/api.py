@@ -57,9 +57,9 @@ class NatureRemoAPI:
         data: dict | None = None,
         json_payload: dict | None = None,
         use_local: bool = False,
-        max_retries: int = 3,
+        max_retries: int = 1,
     ) -> dict | list:
-        """Send an HTTP request to the Nature Remo API with retry logic."""
+        """Send an HTTP request to the Nature Remo Cloud API with retry logic."""
         base_url = self._get_base_url() if use_local else NATURE_REMO_CLOUD_URL
         url = f"{base_url}{path}"
 
@@ -71,7 +71,6 @@ class NatureRemoAPI:
                     headers=self._headers,
                     data=data,
                     json=json_payload,
-                    timeout=ClientTimeout(total=10),
                 ) as response:
                     self._log_rate_limits(response)
 
@@ -84,26 +83,13 @@ class NatureRemoAPI:
                     if response.status == 429:
                         _LOGGER.warning("API rate limit hit (429)")
                         if attempt < max_retries:
-                            delay = 2 ** attempt
+                            delay = max(5, 2 ** attempt)
                             retry_after = response.headers.get("Retry-After")
                             if retry_after:
                                 try:
-                                    delay = int(retry_after)
+                                    delay = max(5, int(retry_after))
                                 except ValueError:
                                     pass
-                            _LOGGER.warning("Retrying in %d seconds...", delay)
-                            await asyncio.sleep(delay)
-                            continue
-                        else:
-                            _LOGGER.error("Failed to fetch request: %s", response.status)
-                            raise ClientError(
-                                f"API request failed with status {response.status}"
-                            )
-
-                    if response.status >= 500:
-                        _LOGGER.warning("Server error (%s)", response.status)
-                        if attempt < max_retries:
-                            delay = 2 ** attempt
                             _LOGGER.warning("Retrying in %d seconds...", delay)
                             await asyncio.sleep(delay)
                             continue
@@ -131,9 +117,9 @@ class NatureRemoAPI:
                     )
             except NatureRemoAuthError:
                 raise
-            except (ClientError, TimeoutError):
+            except TimeoutError:
                 if attempt < max_retries:
-                    delay = 2 ** attempt
+                    delay = max(5, 2 ** attempt)
                     _LOGGER.warning("Retrying in %d seconds...", delay)
                     await asyncio.sleep(delay)
                     continue
@@ -267,13 +253,18 @@ class NatureRemoAPI:
 
     async def send_local_ir_message(self, freq: int, data: list[int]) -> dict:
         _LOGGER.debug("Sending local IR message: freq=%s data_length=%s", freq, len(data))
+        base_url = self._get_base_url()
+        url = f"{base_url}/messages"
         payload = {"freq": freq, "data": data, "format": "us"}
-        try:
-            result = await self._call_api(
-                "POST", "/messages", json_payload=payload, use_local=True
-            )
-            _LOGGER.debug("Local IR message sent successfully: %s", result)
-            return result
-        except (ClientError, TimeoutError) as err:
-            _LOGGER.error("Local IR message failed: %s", err)
-            raise ClientError(f"Local IR message failed: {err}") from err
+
+        async with self._session.post(
+            url, headers=self._headers, json=payload
+        ) as response:
+            if response.status == 200:
+                response_json = await response.json()
+                _LOGGER.debug("Local IR message sent successfully: %s", response_json)
+                return response_json
+
+            text = await response.text()
+            _LOGGER.error("Failed to send local IR message: %s - %s", response.status, text)
+            raise ClientError(f"Local IR message failed: {response.status}")
