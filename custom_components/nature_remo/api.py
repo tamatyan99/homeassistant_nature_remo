@@ -10,6 +10,8 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 _LOGGER = logging.getLogger(__name__)
 NATURE_REMO_CLOUD_URL = "https://api.nature.global/1"
+SAFE_RETRY_METHODS = {"GET"}
+REQUEST_TIMEOUT = ClientTimeout(total=10)
 
 
 class NatureRemoAuthError(ClientError):
@@ -57,9 +59,13 @@ class NatureRemoAPI:
         data: dict | None = None,
         json_payload: dict | None = None,
         use_local: bool = False,
-        max_retries: int = 1,
+        max_retries: int | None = None,
     ) -> dict | list:
         """Send an HTTP request to the Nature Remo Cloud API with retry logic."""
+        method = method.upper()
+        if max_retries is None:
+            max_retries = 1 if method in SAFE_RETRY_METHODS else 0
+
         base_url = self._get_base_url() if use_local else NATURE_REMO_CLOUD_URL
         url = f"{base_url}{path}"
 
@@ -71,6 +77,7 @@ class NatureRemoAPI:
                     headers=self._headers,
                     data=data,
                     json=json_payload,
+                    timeout=REQUEST_TIMEOUT,
                 ) as response:
                     self._log_rate_limits(response)
 
