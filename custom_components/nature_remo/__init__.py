@@ -125,13 +125,21 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    coordinator: NatureRemoCoordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
+    domain_data = hass.data.get(DOMAIN)
+    entry_data = domain_data.get(entry.entry_id) if domain_data else None
+    coordinator: NatureRemoCoordinator | None = (
+        entry_data["coordinator"] if entry_data else None
+    )
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
-        await coordinator.async_shutdown()
-        hass.data[DOMAIN].pop(entry.entry_id, None)
-        if not hass.data[DOMAIN]:
-            hass.services.async_remove(DOMAIN, "send_light_mode")
-            hass.services.async_remove(DOMAIN, "learn_signal")
+        if coordinator is not None:
+            await coordinator.async_shutdown()
+        if domain_data is not None:
+            domain_data.pop(entry.entry_id, None)
+        if not domain_data:
+            if hass.services.has_service(DOMAIN, "send_light_mode"):
+                hass.services.async_remove(DOMAIN, "send_light_mode")
+            if hass.services.has_service(DOMAIN, "learn_signal"):
+                hass.services.async_remove(DOMAIN, "learn_signal")
             hass.data.pop(DOMAIN, None)
     return unload_ok
