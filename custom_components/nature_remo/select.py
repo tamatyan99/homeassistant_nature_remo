@@ -124,6 +124,8 @@ class NatureRemoAcPresetSelect(CoordinatorEntity[NatureRemoCoordinator], SelectE
 
     @callback
     def _handle_coordinator_update(self) -> None:
+        if self.coordinator.data is None:
+            return
         appliance = self.coordinator.data.get(self._appliance_id, {})
         if appliance and "settings" in appliance:
             settings = appliance["settings"]

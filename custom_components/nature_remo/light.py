@@ -79,7 +79,7 @@ class NatureRemoLight(CoordinatorEntity[NatureRemoCoordinator], LightEntity):
 
     @property
     def supported_features(self):
-        return LightEntityFeature.ON_OFF | LightEntityFeature.EFFECT
+        return LightEntityFeature.EFFECT
 
     @property
     def extra_state_attributes(self):
@@ -126,6 +126,13 @@ class NatureRemoLight(CoordinatorEntity[NatureRemoCoordinator], LightEntity):
 
     async def async_turn_on(self, **kwargs):
         _LOGGER.debug("kwargs: %s", kwargs)
+        unsupported = set(kwargs) - {"effect", "transition"}
+        if unsupported:
+            _LOGGER.warning(
+                "[%s] Unsupported kwargs ignored: %s",
+                self._attr_unique_id,
+                unsupported,
+            )
         effect = kwargs.get("effect", "on")
 
         if effect not in self._supported_effects:

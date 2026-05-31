@@ -237,7 +237,7 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
 
         _LOGGER.debug(
             "[%s] [%s] device_id='%s', option_key='%s', entity_id='%s'",
-            self._attr_name,
+            self._attr_unique_id,
             sensor_type,
             device_id,
             option_key,
@@ -337,9 +337,9 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        _LOGGER.debug("[%s] Start _handle_coordinator_update.", self._attr_name)
+        _LOGGER.debug("[%s] Start _handle_coordinator_update.", self._attr_unique_id)
         if self.coordinator.data is None:
-            _LOGGER.debug("[%s] Coordinator data is None, skipping update.", self._attr_name)
+            _LOGGER.debug("[%s] Coordinator data is None, skipping update.", self._attr_unique_id)
             return
         appliance = self.coordinator.data.get(self._appliance_id, {})
 
@@ -393,7 +393,7 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
         self._handle_coordinator_update()
 
     async def async_added_to_hass(self):
-        _LOGGER.debug("[%s] async_added_to_hass: Climate entity complete setup", self._attr_name)
+        _LOGGER.debug("[%s] async_added_to_hass: Climate entity complete setup", self._attr_unique_id)
         await super().async_added_to_hass()
 
         external_entity_ids = self._get_external_sensor_entity_ids()

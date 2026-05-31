@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "homeassistant-nature-remo"
-version = "0.6.2"
+version = "0.6.3"
 description = "Home Assistant custom integration for Nature Remo"
 readme = "README.md"
 license = { text = "MIT" }
@@ -28,6 +28,9 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.11",
 ]
+
+[tool.setuptools]
+packages = []
 
 [tool.ruff]
 target-version = "py312"

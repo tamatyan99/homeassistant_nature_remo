@@ -2,10 +2,10 @@ import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.exceptions import ConfigEntryNotReady, ServiceValidationError
 from .api import NatureRemoAPI
 from .coordinator import NatureRemoCoordinator
-from homeassistant.helpers.update_coordinator import ConfigEntryAuthFailed
+from homeassistant.helpers.update_coordinator import ConfigEntryAuthFailed, UpdateFailed
 from .const import DOMAIN, DEFAULT_UPDATE_INTERVAL, DEFAULT_MOTION_THRESHOLD_MINUTES, CONF_LOCAL_IP
 
 _LOGGER = logging.getLogger(__name__)
@@ -34,6 +34,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except ConfigEntryAuthFailed:
         await entry.async_start_reauth(hass)
         return False
+    except UpdateFailed as err:
+        raise ConfigEntryNotReady(f"Failed to fetch initial data: {err}") from err
 
     hass.data[DOMAIN][entry.entry_id] = {
         "coordinator": coordinator,
@@ -51,7 +53,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         target_entry_data = None
         light_entity = None
-        for entry_data in hass.data[DOMAIN].values():
+        for entry_data in list(hass.data[DOMAIN].values()):
             coordinator = entry_data["coordinator"]
             light_entity = coordinator.entity_map.get(entity_id)
             if light_entity is not None:
@@ -78,7 +80,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             raise ServiceValidationError("appliance_id is required")
 
         target_api = None
-        for entry_data in hass.data[DOMAIN].values():
+        for entry_data in list(hass.data[DOMAIN].values()):
             coordinator = entry_data["coordinator"]
             if (
                 appliance_id in coordinator.aircons
