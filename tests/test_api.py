@@ -207,7 +207,7 @@ class TestNatureRemoAPI:
             await api._call_api("GET", "/devices")
         assert api._session.request.call_count == 1
 
-    async def test_call_api_retries_on_timeout_then_succeeds(self, api):
+    async def test_get_retries_on_timeout_then_succeeds(self, api):
         resp_200 = _mock_response(status=200, json_data={"status": "ok"})
 
         class TimeoutCtx:
@@ -218,22 +218,33 @@ class TestNatureRemoAPI:
 
         responses = [TimeoutCtx(), _mock_context_manager(resp_200)]
         api._session.request = MagicMock(side_effect=lambda *a, **k: responses.pop(0))
-        result = await api._call_api("GET", "/devices")
+        result = await api._get("/devices")
         assert result == {"status": "ok"}
         assert api._session.request.call_count == 2
 
-    async def test_call_api_retries_on_429_for_post(self, api):
+    async def test_post_does_not_retry_on_429(self, api):
         resp_429 = _mock_response(status=429)
         resp_429.headers = {"Retry-After": "1"}
-        resp_200 = _mock_response(status=200, json_data={"status": "ok"})
-        responses = [resp_429, resp_200]
 
         api._session.request = MagicMock(
-            side_effect=lambda *a, **k: _mock_context_manager(responses.pop(0))
+            side_effect=lambda *a, **k: _mock_context_manager(resp_429)
         )
-        result = await api._call_api("POST", "/signals/sig-1/send")
-        assert result == {"status": "ok"}
-        assert api._session.request.call_count == 2
+        with pytest.raises(ClientError, match="API request failed with status 429"):
+            await api._call_api("POST", "/signals/sig-1/send")
+        assert api._session.request.call_count == 1
+
+    async def test_post_does_not_retry_on_timeout(self, api):
+        class TimeoutCtx:
+            async def __aenter__(self):
+                raise TimeoutError()
+
+            async def __aexit__(self, *args):
+                return False
+
+        api._session.request = MagicMock(side_effect=lambda *a, **k: TimeoutCtx())
+        with pytest.raises(TimeoutError):
+            await api._call_api("POST", "/signals/sig-1/send")
+        assert api._session.request.call_count == 1
 
     async def test_parse_smart_meter_properties(self, api):
         properties = [
