@@ -57,9 +57,9 @@ class NatureRemoAPI:
         data: dict | None = None,
         json_payload: dict | None = None,
         use_local: bool = False,
-        max_retries: int = 1,
+        max_retries: int = 0,
     ) -> dict | list:
-        """Send an HTTP request to the Nature Remo Cloud API with retry logic."""
+        """Send an HTTP request to the Nature Remo API."""
         base_url = self._get_base_url() if use_local else NATURE_REMO_CLOUD_URL
         url = f"{base_url}{path}"
 
@@ -126,7 +126,7 @@ class NatureRemoAPI:
                 raise
 
     async def _get(self, path: str) -> dict | list:
-        return await self._call_api("GET", path)
+        return await self._call_api("GET", path, max_retries=1)
 
     async def _request(
         self,
@@ -135,8 +135,16 @@ class NatureRemoAPI:
         data: dict | None = None,
         json_payload: dict | None = None,
         use_local: bool = False,
+        max_retries: int = 0,
     ) -> dict | list:
-        return await self._call_api(method, path, data=data, json_payload=json_payload, use_local=use_local)
+        return await self._call_api(
+            method,
+            path,
+            data=data,
+            json_payload=json_payload,
+            use_local=use_local,
+            max_retries=max_retries,
+        )
 
     async def get_appliances(self) -> list[dict[str, Any]]:
         return await self._get("/appliances")

@@ -1,6 +1,6 @@
 """Tests for __init__.py and platform imports."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 from homeassistant.exceptions import ServiceValidationError
@@ -35,8 +35,8 @@ async def test_setup_entry_starts_reauth_on_auth_failure(hass):
     )
     entry.add_to_hass(hass)
 
-    # Patch the instance method so it is a proper coroutine
-    entry.async_start_reauth = AsyncMock()
+    start_reauth = Mock(wraps=entry.async_start_reauth)
+    entry.async_start_reauth = start_reauth
 
     with patch(
         "custom_components.nature_remo.coordinator.NatureRemoCoordinator._async_update_data",
@@ -46,7 +46,7 @@ async def test_setup_entry_starts_reauth_on_auth_failure(hass):
         await hass.async_block_till_done()
 
     assert result is False
-    entry.async_start_reauth.assert_awaited_once()
+    start_reauth.assert_called_once_with(hass)
 
 
 async def test_unload_entry_shuts_down_coordinator(hass):

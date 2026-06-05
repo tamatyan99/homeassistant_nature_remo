@@ -93,15 +93,17 @@ class NatureRemoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "unknown"
             else:
                 new_unique_id = hashlib.sha256(api_key.encode()).hexdigest()[:32]
-                await self.async_set_unique_id(new_unique_id)
-                self._abort_if_unique_id_configured()
-                self.hass.config_entries.async_update_entry(
+                existing_entry = await self.async_set_unique_id(new_unique_id)
+                if (
+                    existing_entry is not None
+                    and existing_entry.entry_id != reauth_entry.entry_id
+                ):
+                    self._abort_if_unique_id_configured()
+                return self.async_update_reload_and_abort(
                     reauth_entry,
                     data={**reauth_entry.data, "api_key": api_key},
                     unique_id=new_unique_id,
                 )
-                await self.hass.config_entries.async_reload(reauth_entry.entry_id)
-                return self.async_abort(reason="reauth_successful")
 
         return self.async_show_form(
             step_id="reauth",

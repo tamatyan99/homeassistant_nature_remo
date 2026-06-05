@@ -125,8 +125,8 @@ async def test_reauth_step_valid_api_key(hass):
         "custom_components.nature_remo.config_flow.NatureRemoAPI.get_devices",
         new=AsyncMock(return_value=[{"id": "device-1"}]),
     ), patch.object(
-        hass.config_entries, "async_reload", new=AsyncMock()
-    ) as mock_reload:
+        hass.config_entries, "async_schedule_reload", new=Mock()
+    ) as mock_schedule_reload:
         result = await hass.config_entries.flow.async_init(
             DOMAIN,
             context={
@@ -145,7 +145,46 @@ async def test_reauth_step_valid_api_key(hass):
     assert result["type"] == FlowResultType.ABORT
     assert result["reason"] == "reauth_successful"
     assert entry.data == {"api_key": "new_api_key"}
-    mock_reload.assert_awaited_once_with(entry.entry_id)
+    mock_schedule_reload.assert_called_once_with(entry.entry_id)
+
+
+async def test_reauth_step_same_api_key_reloads_entry(hass):
+    """Test reauth succeeds when the same API key is re-entered and validates."""
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    api_key = "existing_api_key"
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"api_key": api_key},
+        unique_id=_unique_id(api_key),
+    )
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.nature_remo.config_flow.NatureRemoAPI.get_devices",
+        new=AsyncMock(return_value=[{"id": "device-1"}]),
+    ), patch.object(
+        hass.config_entries, "async_schedule_reload", new=Mock()
+    ) as mock_schedule_reload:
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={
+                "source": config_entries.SOURCE_REAUTH,
+                "entry_id": entry.entry_id,
+            },
+        )
+        assert result["type"] == FlowResultType.FORM
+        assert result["step_id"] == "reauth"
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"api_key": api_key},
+        )
+
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "reauth_successful"
+    assert entry.data == {"api_key": api_key}
+    mock_schedule_reload.assert_called_once_with(entry.entry_id)
 
 
 async def test_reauth_step_invalid_api_key(hass):
