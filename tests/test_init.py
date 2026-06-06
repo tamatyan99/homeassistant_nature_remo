@@ -35,8 +35,7 @@ async def test_setup_entry_starts_reauth_on_auth_failure(hass):
     )
     entry.add_to_hass(hass)
 
-    # Patch the instance method so it is a proper coroutine
-    entry.async_start_reauth = AsyncMock()
+    entry.async_start_reauth = MagicMock()
 
     with patch(
         "custom_components.nature_remo.coordinator.NatureRemoCoordinator._async_update_data",
@@ -46,7 +45,7 @@ async def test_setup_entry_starts_reauth_on_auth_failure(hass):
         await hass.async_block_till_done()
 
     assert result is False
-    entry.async_start_reauth.assert_awaited_once()
+    entry.async_start_reauth.assert_called_once_with(hass)
 
 
 async def test_unload_entry_shuts_down_coordinator(hass):

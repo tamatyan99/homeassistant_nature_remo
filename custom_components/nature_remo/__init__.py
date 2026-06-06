@@ -5,7 +5,7 @@ from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import ConfigEntryNotReady, ServiceValidationError
 from .api import NatureRemoAPI
 from .coordinator import NatureRemoCoordinator
-from homeassistant.helpers.update_coordinator import ConfigEntryAuthFailed, UpdateFailed
+from homeassistant.helpers.update_coordinator import UpdateFailed
 from .const import DOMAIN, DEFAULT_UPDATE_INTERVAL, DEFAULT_MOTION_THRESHOLD_MINUTES, CONF_LOCAL_IP
 
 _LOGGER = logging.getLogger(__name__)
@@ -31,9 +31,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     try:
         await coordinator.async_config_entry_first_refresh()
-    except ConfigEntryAuthFailed:
-        await entry.async_start_reauth(hass)
-        return False
     except UpdateFailed as err:
         raise ConfigEntryNotReady(f"Failed to fetch initial data: {err}") from err
 
