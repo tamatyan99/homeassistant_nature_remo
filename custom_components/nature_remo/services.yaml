@@ -1,0 +1,23 @@
+send_light_mode:
+  name: Nature Remo Light Mode
+  description: Send command to the selected light using button name.
+  target:
+    entity:
+      domain: light
+  fields:
+    mode:
+      name: Mode
+      description: Select or input the desired mode (e.g., on, night).
+      selector:
+        text:
+
+learn_signal:
+  name: Nature Remo Learn Signal
+  description: Start learning an infrared signal.
+  fields:
+    appliance_id:
+      name: Appliance ID
+      description: Appliance ID to learn a signal for.
+      example: "12345-abc"
+      selector:
+        text: {}

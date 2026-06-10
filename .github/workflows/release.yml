@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Update manifest.json version
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          jq --arg version "$VERSION" '.version = $version' \
+            custom_components/nature_remo/manifest.json > manifest.json.tmp
+          mv manifest.json.tmp custom_components/nature_remo/manifest.json
+
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add custom_components/nature_remo/manifest.json
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: bump version to ${GITHUB_REF_NAME}"
+            git push origin HEAD:main || true
+          fi
+
+      - name: Create integration zip
+        run: |
+          cd custom_components
+          zip -r ../nature_remo.zip nature_remo/
+
+      - name: Upload zip to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: nature_remo.zip
+          generate_release_notes: true
