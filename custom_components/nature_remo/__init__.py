@@ -32,7 +32,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         await coordinator.async_config_entry_first_refresh()
     except ConfigEntryAuthFailed:
-        await entry.async_start_reauth(hass)
+        entry.async_start_reauth(hass)
         return False
     except UpdateFailed as err:
         raise ConfigEntryNotReady(f"Failed to fetch initial data: {err}") from err
