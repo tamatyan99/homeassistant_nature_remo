@@ -9,7 +9,6 @@ from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN
 
-
 _SENSITIVE_KEYS = {
     "serial_number",
     "mac_address",

@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import hashlib
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, patch
 
-import aiohttp
 from homeassistant import config_entries
 from homeassistant.data_entry_flow import FlowResultType
-import pytest
 
 from custom_components.nature_remo.api import NatureRemoAuthError
 from custom_components.nature_remo.const import DOMAIN

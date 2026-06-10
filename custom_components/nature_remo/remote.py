@@ -6,16 +6,15 @@ from typing import Any
 from aiohttp import ClientError
 from homeassistant.components.remote import RemoteEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
-from homeassistant.core import callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api import NatureRemoAPI
 from .const import DOMAIN, OFF_COMMANDS, ON_COMMANDS
-from .entity import get_device_info
 from .coordinator import NatureRemoCoordinator
+from .entity import get_device_info
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -115,11 +114,11 @@ class NatureRemoRemoteEntity(CoordinatorEntity[NatureRemoCoordinator], RemoteEnt
                 await self._api.send_command_signal(self._power_on_id)
                 self._attr_state = "on"
                 self.async_write_ha_state()
-            except (ClientError, TimeoutError):
+            except (ClientError, TimeoutError) as err:
                 _LOGGER.error("Failed to send power ON command")
                 raise HomeAssistantError(
                     f"Power ON command failed for {self.name}"
-                )
+                ) from err
         else:
             raise HomeAssistantError(f"Power ON command not available for {self.name}")
 
@@ -129,11 +128,11 @@ class NatureRemoRemoteEntity(CoordinatorEntity[NatureRemoCoordinator], RemoteEnt
                 await self._api.send_command_signal(self._power_off_id)
                 self._attr_state = "off"
                 self.async_write_ha_state()
-            except (ClientError, TimeoutError):
+            except (ClientError, TimeoutError) as err:
                 _LOGGER.error("Failed to send power OFF command")
                 raise HomeAssistantError(
                     f"Power OFF command failed for {self.name}"
-                )
+                ) from err
         else:
             raise HomeAssistantError(
                 f"Power OFF command not available for {self.name}"

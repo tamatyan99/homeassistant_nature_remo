@@ -7,10 +7,10 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from .coordinator import NatureRemoCoordinator
-from .const import DOMAIN
-from .entity import get_device_info
 
+from .const import DOMAIN
+from .coordinator import NatureRemoCoordinator
+from .entity import get_device_info
 
 SENSOR_TYPES = {
     "te": {

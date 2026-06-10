@@ -1,9 +1,8 @@
-from datetime import timedelta, datetime
 import logging
+from datetime import datetime, timedelta
 from typing import Any
 
 from aiohttp import ClientError
-
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import (
     ConfigEntryAuthFailed,
@@ -13,7 +12,6 @@ from homeassistant.helpers.update_coordinator import (
 from homeassistant.util.dt import now as dt_now
 
 from .api import NatureRemoAuthError
-
 
 _LOGGER = logging.getLogger(__name__)
 

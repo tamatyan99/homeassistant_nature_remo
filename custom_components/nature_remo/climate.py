@@ -1,13 +1,13 @@
+import contextlib
 import logging
 
 from aiohttp import ClientError
 from homeassistant.components.climate import (
+    PRESET_NONE,
     ClimateEntity,
     ClimateEntityFeature,
     HVACMode,
-    PRESET_NONE,
 )
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
@@ -15,13 +15,13 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
 from .api import NatureRemoAPI, NatureRemoAuthError
+from .const import DOMAIN, HA_MODE_TO_REMO_MODE, REMO_MODE_TO_HA_MODE
 from .coordinator import NatureRemoCoordinator
+from .entity import get_device_info
 
 _LOGGER = logging.getLogger(__name__)
-
-from .const import DOMAIN, HA_MODE_TO_REMO_MODE, REMO_MODE_TO_HA_MODE
-from .entity import get_device_info
 
 
 async def async_apply_ac_preset(
@@ -316,12 +316,10 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
             return
 
         device_events = device_data.get("events", {})
-        if self._temperature is None:
-            if "te" in device_events:
-                self._temperature = device_events["te"].get("val")
-        if self._humidity is None:
-            if "hu" in device_events:
-                self._humidity = device_events["hu"].get("val")
+        if self._temperature is None and "te" in device_events:
+            self._temperature = device_events["te"].get("val")
+        if self._humidity is None and "hu" in device_events:
+            self._humidity = device_events["hu"].get("val")
 
     def _update_aircon_state(self, appliance: dict) -> None:
         if appliance and "settings" in appliance:
@@ -519,14 +517,9 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
         hvac_mode_result = self.get_remo_mode_to_hvac_mode(response.get("mode", ""))
         if hvac_mode_result is not None:
             self._hvac_mode = hvac_mode_result
-        if self._hvac_mode == HVACMode.FAN_ONLY:
-            temp = "0.0"
-        else:
-            temp = response.get("temp", "25.0")
-        try:
+        temp = "0.0" if self._hvac_mode == HVACMode.FAN_ONLY else response.get("temp", "25.0")
+        with contextlib.suppress(ValueError, TypeError):
             self._target_temperature = float(temp)
-        except (ValueError, TypeError):
-            pass
         self._fan_mode = response.get("vol", self._fan_mode)
         self._swing_mode = response.get("dir", self._swing_mode)
         self._button = response.get("button", "")

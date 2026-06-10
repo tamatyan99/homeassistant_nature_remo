@@ -12,7 +12,7 @@ from custom_components.nature_remo.const import DOMAIN
 
 def test_switch_imports():
     """Test switch platform imports do not fail."""
-    from custom_components.nature_remo.switch import ON_COMMANDS, OFF_COMMANDS
+    from custom_components.nature_remo.switch import OFF_COMMANDS, ON_COMMANDS
 
     assert "on" in ON_COMMANDS
     assert "off" in OFF_COMMANDS
@@ -20,7 +20,7 @@ def test_switch_imports():
 
 def test_remote_imports():
     """Test remote platform imports do not fail."""
-    from custom_components.nature_remo.remote import ON_COMMANDS, OFF_COMMANDS
+    from custom_components.nature_remo.remote import OFF_COMMANDS, ON_COMMANDS
 
     assert "on" in ON_COMMANDS
     assert "off" in OFF_COMMANDS

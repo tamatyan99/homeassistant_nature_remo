@@ -1,12 +1,11 @@
 import logging
 
+import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
 from homeassistant.helpers.device_registry import async_get as async_get_device_registry
-
-import voluptuous as vol
 
 from .const import DOMAIN
 

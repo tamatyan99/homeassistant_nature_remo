@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from typing import Any
 
 import voluptuous as vol
 from aiohttp import ClientError
-from typing import Any
-
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult

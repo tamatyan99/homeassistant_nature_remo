@@ -1,6 +1,6 @@
 """Tests for NatureRemoCoordinator."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -141,7 +141,7 @@ class TestNatureRemoCoordinator:
         assert "dev-1" not in coordinator.motion_sensors
 
     async def test_motion_sensor_active(self, hass, mock_api):
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         created_at = now - timedelta(minutes=2)
         created_at_str = created_at.strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -167,7 +167,7 @@ class TestNatureRemoCoordinator:
         assert coordinator.motion_sensors["dev-1"]["name"] == "Sensor"
 
     async def test_motion_sensor_inactive(self, hass, mock_api):
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         created_at = now - timedelta(minutes=10)
         created_at_str = created_at.strftime("%Y-%m-%dT%H:%M:%SZ")
 

@@ -1,15 +1,16 @@
 import logging
 
 from aiohttp import ClientError
-from homeassistant.components.light import LightEntity, ColorMode, LightEntityFeature
+from homeassistant.components.light import ColorMode, LightEntity, LightEntityFeature
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
 from .api import NatureRemoAuthError
-from .coordinator import NatureRemoCoordinator
 from .const import DOMAIN
+from .coordinator import NatureRemoCoordinator
 from .entity import get_device_info
 
 _LOGGER = logging.getLogger(__name__)

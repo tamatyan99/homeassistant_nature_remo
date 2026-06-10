@@ -1,3 +1,4 @@
+import contextlib
 import logging
 
 from aiohttp import ClientError
@@ -11,8 +12,8 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .climate import async_apply_ac_preset
 from .const import DOMAIN, REMO_MODE_TO_HA_MODE
-from .entity import get_device_info
 from .coordinator import NatureRemoCoordinator
+from .entity import get_device_info
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -135,10 +136,8 @@ class NatureRemoAcPresetSelect(CoordinatorEntity[NatureRemoCoordinator], SelectE
             remo_mode = settings.get("mode", "")
             ha_mode_str = REMO_MODE_TO_HA_MODE.get(remo_mode)
             if ha_mode_str is not None:
-                try:
+                with contextlib.suppress(ValueError):
                     self._hvac_mode = HVACMode(ha_mode_str)
-                except ValueError:
-                    pass
         self.async_write_ha_state()
 
     async def async_select_option(self, option: str) -> None:

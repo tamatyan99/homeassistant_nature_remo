@@ -1,12 +1,12 @@
 import asyncio
+import contextlib
 import json
 import logging
-from typing import Any
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
+from typing import Any
 
 from aiohttp import ClientError, ClientTimeout
-
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
@@ -62,7 +62,7 @@ class NatureRemoAPI:
         except ValueError:
             try:
                 dt = parsedate_to_datetime(value)
-                return max(0, int((dt - datetime.now(timezone.utc)).total_seconds()))
+                return max(0, int((dt - datetime.now(UTC)).total_seconds()))
             except (ValueError, TypeError):
                 return fallback
 
@@ -124,10 +124,8 @@ class NatureRemoAPI:
                             fallback = 60
                             reset_ts = response.headers.get("X-Rate-Limit-Reset")
                             if reset_ts:
-                                try:
-                                    fallback = max(0, int(int(reset_ts) - datetime.now(timezone.utc).timestamp()))
-                                except (ValueError, TypeError):
-                                    pass
+                                with contextlib.suppress(ValueError, TypeError):
+                                    fallback = max(0, int(int(reset_ts) - datetime.now(UTC).timestamp()))
                             retry_after = response.headers.get("Retry-After")
                             delay = self._parse_retry_after(retry_after, fallback)
                             _LOGGER.warning("Rate limited. Retrying in %d seconds...", delay)
@@ -224,11 +222,11 @@ class NatureRemoAPI:
 
     def parse_smart_meter_properties(self, properties: list[dict]) -> dict:
         from .const import (
-            SMART_METER_EPC_COEFFICIENT,
-            SMART_METER_EPC_UNIT,
             SMART_METER_EPC_BUY_POWER,
-            SMART_METER_EPC_SOLD_POWER,
+            SMART_METER_EPC_COEFFICIENT,
             SMART_METER_EPC_INSTANT_POWER,
+            SMART_METER_EPC_SOLD_POWER,
+            SMART_METER_EPC_UNIT,
         )
 
         coefficient = 1

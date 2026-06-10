@@ -1,11 +1,10 @@
 """Tests for NatureRemoAPI."""
 
-import asyncio
 
-import aiohttp
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 from aiohttp import ClientError
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from custom_components.nature_remo.api import (
     NATURE_REMO_CLOUD_URL,

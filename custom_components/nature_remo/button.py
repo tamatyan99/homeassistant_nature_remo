@@ -13,8 +13,8 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api import NatureRemoAPI
 from .const import DOMAIN
-from .entity import get_device_info
 from .coordinator import NatureRemoCoordinator
+from .entity import get_device_info
 
 _LOGGER = logging.getLogger(__name__)
 

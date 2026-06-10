@@ -2,11 +2,17 @@ import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
-from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady, HomeAssistantError, ServiceValidationError
-from .api import NatureRemoAPI, NatureRemoAuthError
-from .coordinator import NatureRemoCoordinator
+from homeassistant.exceptions import (
+    ConfigEntryAuthFailed,
+    ConfigEntryNotReady,
+    HomeAssistantError,
+    ServiceValidationError,
+)
 from homeassistant.helpers.update_coordinator import UpdateFailed
-from .const import DOMAIN, DEFAULT_UPDATE_INTERVAL, DEFAULT_MOTION_THRESHOLD_MINUTES, CONF_LOCAL_IP
+
+from .api import NatureRemoAPI, NatureRemoAuthError
+from .const import CONF_LOCAL_IP, DEFAULT_MOTION_THRESHOLD_MINUTES, DEFAULT_UPDATE_INTERVAL, DOMAIN
+from .coordinator import NatureRemoCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS = ["climate", "light", "sensor", "remote", "switch", "binary_sensor", "event", "button", "select"]
@@ -20,8 +26,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     local_ip = entry.options.get(CONF_LOCAL_IP, "")
     api = NatureRemoAPI(hass, entry.data["api_key"], local_ip=local_ip if local_ip else None)
 
-    MIN_UPDATE_INTERVAL = 10
-    update_interval = max(MIN_UPDATE_INTERVAL, int(entry.options.get("update_interval", DEFAULT_UPDATE_INTERVAL)))
+    min_update_interval = 10
+    update_interval = max(min_update_interval, int(entry.options.get("update_interval", DEFAULT_UPDATE_INTERVAL)))
     coordinator = NatureRemoCoordinator(hass, api, update_interval)
 
     motion_threshold = int(entry.options.get("motion_threshold_minutes", DEFAULT_MOTION_THRESHOLD_MINUTES))
