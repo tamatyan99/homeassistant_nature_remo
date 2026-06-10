@@ -54,6 +54,10 @@ class NatureRemoMotionEvent(CoordinatorEntity[NatureRemoCoordinator], EventEntit
     def device_info(self):
         return get_device_info(self._device)
 
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        self._handle_coordinator_update()
+
     @callback
     def _handle_coordinator_update(self) -> None:
         motion = self.coordinator.motion_sensors.get(self._device_id)

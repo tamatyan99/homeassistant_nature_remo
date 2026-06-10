@@ -14,15 +14,24 @@ _LOGGER = logging.getLogger(__name__)
 
 class NatureRemoOptionsFlowHandler(config_entries.OptionsFlow):
 
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        """Initialize options flow."""
+        # Pass config_entry to the parent where supported; fall back for older HA versions.
+        try:
+            super().__init__(config_entry)
+        except TypeError:
+            super().__init__()
+        self._config_entry = config_entry
+
     async def async_step_init(self, user_input=None) -> FlowResult:
         device_registry = async_get_device_registry(self.hass)
         devices = [
             dev
             for dev in device_registry.devices.values()
-            if dev.config_entries and self.config_entry.entry_id in dev.config_entries
+            if dev.config_entries and self._config_entry.entry_id in dev.config_entries
         ]
 
-        options = self.config_entry.options
+        options = self._config_entry.options
 
         interval_default = options.get("update_interval", 60)
         motion_threshold_default = options.get("motion_threshold_minutes", 5)

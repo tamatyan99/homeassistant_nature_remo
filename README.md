@@ -23,14 +23,6 @@ Please use this integration **at your own risk**.
 
 ---
 
-## Fork Information
-
-This repository is a fork of [NaNaLinks/homeassistant_nature_remo](https://github.com/NaNaLinks/homeassistant_nature_remo) originally developed by [@nanosns](https://github.com/nanosns).
-
-While the original repository remains available, this fork was created to continue independent development with additional features, bug fixes, and ongoing maintenance. We appreciate the original author's work and maintain full respect for the original project.
-
----
-
 ## Features
 
 - Control appliances (air conditioners, lights) registered to Nature Remo
@@ -41,7 +33,7 @@ While the original repository remains available, this fork was created to contin
 - Switch entities for appliances with on/off signals
 - Binary motion sensor with configurable detection threshold
 - External temperature and humidity sensor override for climate entities
-- Local API support for data retrieval (read-only; control commands always use the cloud API)
+- Local API support for IR message sending (data retrieval always uses the cloud API)
 
 ---
 

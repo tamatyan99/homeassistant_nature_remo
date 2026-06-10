@@ -130,6 +130,8 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
         return self._preset_mode
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
+        if preset_mode not in self.preset_modes:
+            raise HomeAssistantError(f"Invalid preset mode: {preset_mode}")
         target_temp = 26 if preset_mode == "eco" else self._target_temperature
         prev_preset = self._preset_mode
         prev_temp = self._target_temperature

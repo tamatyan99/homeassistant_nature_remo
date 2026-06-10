@@ -135,7 +135,7 @@ class NatureRemoLight(CoordinatorEntity[NatureRemoCoordinator], LightEntity):
         effect = kwargs.get("effect", "on")
 
         # Allow "on" even if effect list is empty (startup edge case)
-        if self._attr_effect_list and effect not in self._attr_effect_list:
+        if effect != "on" and effect not in self._attr_effect_list:
             raise HomeAssistantError(f"Effect '{effect}' is not supported by this light")
 
         prev_is_on = self._is_on
