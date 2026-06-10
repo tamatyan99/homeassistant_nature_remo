@@ -136,7 +136,11 @@ async def test_select_ac_preset_eco_calls_api(
 
     mock_api.send_command_climate.assert_awaited_once()
     call_args = mock_api.send_command_climate.await_args
-    assert call_args.args[0] == {"button": "eco", "temperature": "26"}
+    assert call_args.args[0] == {
+        "button": "eco",
+        "temperature": "26",
+        "temperature_unit": "c",
+    }
     assert call_args.args[1] == "ac-1"
 
 

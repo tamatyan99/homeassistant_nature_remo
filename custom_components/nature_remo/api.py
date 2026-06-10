@@ -24,7 +24,8 @@ class NatureRemoAPI:
         self._token = token
         self._session = async_get_clientsession(hass)
         self._local_ip = local_ip
-        self._headers = {"Authorization": f"Bearer {token}"}
+        self._cloud_headers = {"Authorization": f"Bearer {token}"}
+        self._local_headers = {"X-Requested-With": "homeassistant"}
         self._cloud_request_lock = asyncio.Lock()
 
     def _get_base_url(self) -> str:
@@ -66,6 +67,33 @@ class NatureRemoAPI:
             except (ValueError, TypeError):
                 return fallback
 
+    def _rate_limit_delay(self, response, fallback: int = 60) -> int:
+        """Compute backoff delay from rate-limit response headers."""
+        reset_ts = response.headers.get("X-Rate-Limit-Reset")
+        if reset_ts:
+            with contextlib.suppress(ValueError, TypeError):
+                fallback = max(0, int(int(reset_ts) - datetime.now(UTC).timestamp()))
+        retry_after = response.headers.get("Retry-After")
+        return self._parse_retry_after(retry_after, fallback)
+
+    async def _parse_json_response(self, response) -> dict | list:
+        """Parse a successful JSON response and validate its type."""
+        try:
+            data_resp = await response.json()
+        except json.JSONDecodeError as err:
+            text = await response.text()
+            _LOGGER.error("Invalid JSON response: %s", text[:500])
+            raise ClientError(f"Invalid JSON response: {err}") from err
+        if not isinstance(data_resp, (list, dict)):
+            _LOGGER.error(
+                "Unexpected response type from API: %s (expected list or dict)",
+                type(data_resp),
+            )
+            raise ValueError(
+                f"Unexpected API response type: {type(data_resp)}"
+            )
+        return data_resp
+
     async def _call_api(
         self,
         method: str,
@@ -76,99 +104,77 @@ class NatureRemoAPI:
         use_local: bool = False,
         max_retries: int = 2,
     ) -> dict | list:
-        """Send an HTTP request to the Nature Remo Cloud API with retry logic."""
+        """Send an HTTP request to the Nature Remo API with retry logic."""
         base_url = self._get_base_url() if use_local else NATURE_REMO_CLOUD_URL
         url = f"{base_url}{path}"
         timeout = ClientTimeout(total=30, connect=10)
+        headers = self._local_headers if use_local else self._cloud_headers
+        skip_auto_headers = {"Expect"} if use_local else None
+        lock_ctx = contextlib.nullcontext() if use_local else self._cloud_request_lock
 
-        # Serialize cloud requests to avoid rate limit bursts
-        if not use_local:
-            async with self._cloud_request_lock:
-                return await self._execute_request(
-                    method, url, data, json_payload, timeout, max_retries
-                )
-        return await self._execute_request(
-            method, url, data, json_payload, timeout, max_retries
-        )
+        retry_delay: int | None = None
 
-    async def _execute_request(
-        self,
-        method: str,
-        url: str,
-        data: dict | None,
-        json_payload: dict | None,
-        timeout: ClientTimeout,
-        max_retries: int,
-    ) -> dict | list:
         for attempt in range(max_retries + 1):
-            try:
-                async with self._session.request(
-                    method,
-                    url,
-                    headers=self._headers,
-                    data=data,
-                    json=json_payload,
-                    timeout=timeout,
-                ) as response:
-                    self._log_rate_limits(response)
+            async with lock_ctx:
+                try:
+                    async with self._session.request(
+                        method,
+                        url,
+                        headers=headers,
+                        data=data,
+                        json=json_payload,
+                        timeout=timeout,
+                        skip_auto_headers=skip_auto_headers,
+                    ) as response:
+                        if not use_local:
+                            self._log_rate_limits(response)
 
-                    if response.status == 401:
-                        _LOGGER.error("Authentication failed: invalid API token")
-                        raise NatureRemoAuthError(
-                            "API request failed with status 401 (Unauthorized)"
-                        )
+                        if response.status == 401:
+                            _LOGGER.error("Authentication failed: invalid API token")
+                            raise NatureRemoAuthError(
+                                "API request failed with status 401 (Unauthorized)"
+                            )
 
-                    if response.status == 429:
-                        _LOGGER.warning("API rate limit hit (429)")
-                        if attempt < max_retries:
-                            fallback = 60
-                            reset_ts = response.headers.get("X-Rate-Limit-Reset")
-                            if reset_ts:
-                                with contextlib.suppress(ValueError, TypeError):
-                                    fallback = max(0, int(int(reset_ts) - datetime.now(UTC).timestamp()))
-                            retry_after = response.headers.get("Retry-After")
-                            delay = self._parse_retry_after(retry_after, fallback)
-                            _LOGGER.warning("Rate limited. Retrying in %d seconds...", delay)
-                            await asyncio.sleep(delay)
-                            continue
+                        if response.status == 429:
+                            _LOGGER.warning("API rate limit hit (429)")
+                            if attempt < max_retries:
+                                retry_delay = self._rate_limit_delay(response)
+                                _LOGGER.warning(
+                                    "Rate limited. Retrying in %d seconds...", retry_delay
+                                )
+                            else:
+                                body = await response.text()
+                                _LOGGER.error("Rate limit exceeded after retries: %s", body[:500])
+                                raise ClientError(
+                                    f"API rate limit exceeded (429). Response: {body[:200]}"
+                                )
+
+                        elif response.ok:
+                            return await self._parse_json_response(response)
+
                         else:
                             body = await response.text()
-                            _LOGGER.error("Rate limit exceeded after retries: %s", body[:500])
+                            _LOGGER.error("API request failed: %s - %s", response.status, body[:500])
                             raise ClientError(
-                                f"API rate limit exceeded (429). Response: {body[:200]}"
+                                f"API request failed with status {response.status}: {body[:200]}"
                             )
 
-                    if response.ok:
-                        try:
-                            data_resp = await response.json()
-                        except json.JSONDecodeError as err:
-                            text = await response.text()
-                            _LOGGER.error("Invalid JSON response: %s", text[:500])
-                            raise ClientError(f"Invalid JSON response: {err}") from err
-                        if not isinstance(data_resp, (list, dict)):
-                            _LOGGER.error(
-                                "Unexpected response type from API: %s (expected list or dict)",
-                                type(data_resp),
-                            )
-                            raise ValueError(
-                                f"Unexpected API response type: {type(data_resp)}"
-                            )
-                        return data_resp
+                except NatureRemoAuthError:
+                    raise
+                except TimeoutError:
+                    if attempt < max_retries:
+                        retry_delay = 2 ** attempt
+                        _LOGGER.warning("Request timed out. Retrying in %d seconds...", retry_delay)
+                    else:
+                        raise
 
-                    body = await response.text()
-                    _LOGGER.error("API request failed: %s - %s", response.status, body[:500])
-                    raise ClientError(
-                        f"API request failed with status {response.status}: {body[:200]}"
-                    )
-            except NatureRemoAuthError:
-                raise
-            except TimeoutError:
-                if attempt < max_retries:
-                    delay = 2 ** attempt
-                    _LOGGER.warning("Request timed out. Retrying in %d seconds...", delay)
-                    await asyncio.sleep(delay)
-                    continue
-                raise
+            # Lock is released here; sleep outside the lock so other requests can proceed.
+            if retry_delay is not None:
+                await asyncio.sleep(retry_delay)
+                retry_delay = None
+
+        # Should never reach here, but guard against unexpected fall-through.
+        raise ClientError("API request failed after retries")
 
     async def _get(self, path: str) -> dict | list:
         return await self._call_api("GET", path)
@@ -210,6 +216,11 @@ class NatureRemoAPI:
 
     async def learn_signal(self, appliance_id: str) -> dict:
         path = f"/appliances/{appliance_id}/IR"
+        _LOGGER.warning(
+            "learn_signal uses a non-documented Nature Remo endpoint (%s); "
+            "it may stop working if the vendor changes the Cloud API.",
+            path,
+        )
         try:
             result = await self._call_api("POST", path)
             _LOGGER.debug("Signal learned successfully: %s", appliance_id)

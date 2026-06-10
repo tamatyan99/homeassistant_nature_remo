@@ -153,7 +153,9 @@ class TestNatureRemoAPI:
         call_args = api_with_local_ip._session.request.call_args
         assert call_args[0][0] == "POST"
         assert call_args[0][1] == "http://192.168.1.100/messages"
-        assert call_args[1]["headers"]["Authorization"] == "Bearer test-token"
+        # Local API must include X-Requested-With and must NOT send the cloud token.
+        assert call_args[1]["headers"]["X-Requested-With"] == "homeassistant"
+        assert "Authorization" not in call_args[1]["headers"]
 
     async def test_get_retries_on_429_then_succeeds(self, api):
         resp_429 = _mock_response(status=429)

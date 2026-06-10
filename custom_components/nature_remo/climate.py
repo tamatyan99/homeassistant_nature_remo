@@ -23,6 +23,16 @@ from .entity import get_device_info
 
 _LOGGER = logging.getLogger(__name__)
 
+TEMPERATURE_UNIT_CELSIUS = "c"
+
+
+def _build_climate_payload(**kwargs) -> dict:
+    """Build a climate command payload, always including the temperature unit."""
+    payload = dict(kwargs)
+    if "temperature" in payload or "operation_mode" in payload:
+        payload.setdefault("temperature_unit", TEMPERATURE_UNIT_CELSIUS)
+    return payload
+
 
 async def async_apply_ac_preset(
     api: NatureRemoAPI,
@@ -33,15 +43,15 @@ async def async_apply_ac_preset(
 ) -> dict:
     """Build the AC preset payload and send it via the API."""
     if preset_mode == "eco":
-        payload = {"button": "eco", "temperature": "26"}
+        payload = _build_climate_payload(button="eco", temperature="26")
     else:
         operation_mode = HA_MODE_TO_REMO_MODE.get(hvac_mode.value)
         if operation_mode is None:
             raise HomeAssistantError(f"Invalid HVAC mode: {hvac_mode}")
-        payload = {
-            "operation_mode": operation_mode,
-            "temperature": str(target_temperature),
-        }
+        payload = _build_climate_payload(
+            operation_mode=operation_mode,
+            temperature=str(target_temperature),
+        )
     return await api.send_command_climate(payload, appliance_id)
 
 
@@ -448,13 +458,13 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
         prev_hvac_mode = self._hvac_mode
 
         if hvac_mode == HVACMode.OFF:
-            payload = {"button": "power-off"}
+            payload = _build_climate_payload(button="power-off")
         else:
             operation_mode = HA_MODE_TO_REMO_MODE.get(hvac_mode.value)
-            payload = {
-                "operation_mode": operation_mode,
-                "temperature": self.format_temperature(self._target_temperature),
-            }
+            payload = _build_climate_payload(
+                operation_mode=operation_mode,
+                temperature=self.format_temperature(self._target_temperature),
+            )
 
         try:
             response = await self._api.send_command_climate(payload, self._appliance_id)
@@ -489,10 +499,10 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
         _LOGGER.debug("Setting temperature to: %s", temperature)
 
         set_temperature = self.format_temperature(temperature)
-        payload = {
-            "operation_mode": operation_mode,
-            "temperature": set_temperature,
-        }
+        payload = _build_climate_payload(
+            operation_mode=operation_mode,
+            temperature=set_temperature,
+        )
 
         prev_target = self._target_temperature
         prev_button = self._button
@@ -539,10 +549,10 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
         if operation_mode is None:
             raise HomeAssistantError(f"Invalid HVAC mode: {self._hvac_mode}")
 
-        payload = {
-            "operation_mode": operation_mode,
-            "air_volume": fan_mode,
-        }
+        payload = _build_climate_payload(
+            operation_mode=operation_mode,
+            air_volume=fan_mode,
+        )
 
         prev_fan = self._fan_mode
         prev_button = self._button
@@ -566,10 +576,10 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
         if operation_mode is None:
             raise HomeAssistantError(f"Invalid HVAC mode: {self._hvac_mode}")
 
-        payload = {
-            "operation_mode": operation_mode,
-            "air_direction": swing_mode,
-        }
+        payload = _build_climate_payload(
+            operation_mode=operation_mode,
+            air_direction=swing_mode,
+        )
 
         prev_swing = self._swing_mode
         prev_button = self._button

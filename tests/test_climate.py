@@ -117,7 +117,11 @@ async def test_climate_set_hvac_mode_calls_api(
 
     mock_api.send_command_climate.assert_awaited_once()
     call_args = mock_api.send_command_climate.await_args
-    assert call_args.args[0] == {"operation_mode": "warm", "temperature": "25"}
+    assert call_args.args[0] == {
+        "operation_mode": "warm",
+        "temperature": "25",
+        "temperature_unit": "c",
+    }
     assert call_args.args[1] == "ac-1"
 
     state = hass.states.get("climate.living_room")
@@ -152,7 +156,11 @@ async def test_climate_set_temperature_calls_api(
 
     mock_api.send_command_climate.assert_awaited_once()
     call_args = mock_api.send_command_climate.await_args
-    assert call_args.args[0] == {"operation_mode": "cool", "temperature": "22"}
+    assert call_args.args[0] == {
+        "operation_mode": "cool",
+        "temperature": "22",
+        "temperature_unit": "c",
+    }
     assert call_args.args[1] == "ac-1"
 
 
@@ -184,7 +192,11 @@ async def test_climate_set_preset_mode_eco_calls_api(
 
     mock_api.send_command_climate.assert_awaited_once()
     call_args = mock_api.send_command_climate.await_args
-    assert call_args.args[0] == {"button": "eco", "temperature": "26"}
+    assert call_args.args[0] == {
+        "button": "eco",
+        "temperature": "26",
+        "temperature_unit": "c",
+    }
     assert call_args.args[1] == "ac-1"
 
 
@@ -216,7 +228,11 @@ async def test_climate_set_fan_mode_calls_api(
 
     mock_api.send_command_climate.assert_awaited_once()
     call_args = mock_api.send_command_climate.await_args
-    assert call_args.args[0] == {"operation_mode": "cool", "air_volume": "2"}
+    assert call_args.args[0] == {
+        "operation_mode": "cool",
+        "air_volume": "2",
+        "temperature_unit": "c",
+    }
     assert call_args.args[1] == "ac-1"
 
 

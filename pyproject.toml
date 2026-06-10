@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "homeassistant-nature-remo"
-version = "0.6.4"
+version = "0.6.5"
 description = "Home Assistant custom integration for Nature Remo"
 readme = "README.md"
 license = { text = "MIT" }

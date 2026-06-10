@@ -26,7 +26,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     local_ip = entry.options.get(CONF_LOCAL_IP, "")
     api = NatureRemoAPI(hass, entry.data["api_key"], local_ip=local_ip if local_ip else None)
 
-    min_update_interval = 10
+    # Respect Nature Cloud API rate limit: 30 requests / 5 min.
+    # Each refresh issues 2 requests (devices + appliances), so 30 s is the safe floor.
+    min_update_interval = 30
     update_interval = max(min_update_interval, int(entry.options.get("update_interval", DEFAULT_UPDATE_INTERVAL)))
     coordinator = NatureRemoCoordinator(hass, api, update_interval)
 
