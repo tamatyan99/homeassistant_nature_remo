@@ -175,16 +175,6 @@ class NatureRemoAPI:
     async def _get(self, path: str) -> dict | list:
         return await self._call_api("GET", path)
 
-    async def _request(
-        self,
-        method: str,
-        path: str,
-        data: dict | None = None,
-        json_payload: dict | None = None,
-        use_local: bool = False,
-    ) -> dict | list:
-        return await self._call_api(method, path, data=data, json_payload=json_payload, use_local=use_local)
-
     async def get_appliances(self) -> list[dict[str, Any]]:
         return await self._get("/appliances")
 

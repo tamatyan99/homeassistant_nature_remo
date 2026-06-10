@@ -9,7 +9,8 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, HA_MODE_TO_REMO_MODE, REMO_MODE_TO_HA_MODE
+from .climate import async_apply_ac_preset
+from .const import DOMAIN, REMO_MODE_TO_HA_MODE
 from .entity import get_device_info
 from .coordinator import NatureRemoCoordinator
 
@@ -100,8 +101,6 @@ class NatureRemoLightSelect(CoordinatorEntity[NatureRemoCoordinator], SelectEnti
         self.async_write_ha_state()
 
 
-# NOTE: Preset logic is duplicated with NatureRemoClimate.async_set_preset_mode.
-# When changing either side, keep them in sync or extract a shared helper.
 class NatureRemoAcPresetSelect(CoordinatorEntity[NatureRemoCoordinator], SelectEntity):
     _attr_has_entity_name = True
     _attr_should_poll = False
@@ -147,34 +146,23 @@ class NatureRemoAcPresetSelect(CoordinatorEntity[NatureRemoCoordinator], SelectE
             raise HomeAssistantError(f"Invalid option: {option}")
 
         if option == "eco":
-            operation_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
-            if operation_mode is None:
-                raise HomeAssistantError(f"Invalid HVAC mode: {self._hvac_mode}")
-            payload = {"button": "eco", "temperature": "26"}
-            prev_option = self._attr_current_option
-            try:
-                await self._api.send_command_climate(payload, self._appliance_id)
-                self._attr_current_option = "eco"
-            except (ClientError, TimeoutError):
-                self._attr_current_option = prev_option
-                self.async_write_ha_state()
-                raise
+            target_temp = 26
         else:
-            operation_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
-            if operation_mode is None:
-                raise HomeAssistantError(f"Invalid HVAC mode: {self._hvac_mode}")
             appliance = self.coordinator.data.get(self._appliance_id, {})
-            temp = appliance.get("settings", {}).get("temp", "25") if appliance else "25"
-            payload = {
-                "operation_mode": operation_mode,
-                "temperature": str(temp),
-            }
-            prev_option = self._attr_current_option
-            try:
-                await self._api.send_command_climate(payload, self._appliance_id)
-                self._attr_current_option = "none"
-            except (ClientError, TimeoutError):
-                self._attr_current_option = prev_option
-                self.async_write_ha_state()
-                raise
+            target_temp = appliance.get("settings", {}).get("temp", "25") if appliance else "25"
+
+        prev_option = self._attr_current_option
+        try:
+            await async_apply_ac_preset(
+                self._api,
+                self._appliance_id,
+                option,
+                self._hvac_mode,
+                target_temp,
+            )
+            self._attr_current_option = option
+        except (ClientError, TimeoutError):
+            self._attr_current_option = prev_option
+            self.async_write_ha_state()
+            raise
         self.async_write_ha_state()

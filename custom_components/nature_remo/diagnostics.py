@@ -10,12 +10,32 @@ from homeassistant.core import HomeAssistant
 from .const import DOMAIN
 
 
+_SENSITIVE_KEYS = {
+    "serial_number",
+    "mac_address",
+    "name",
+    "nickname",
+    "id",
+    "device_id",
+    "appliance_id",
+}
+
+
 def _mask_device_data(data: dict) -> dict:
-    """Return a copy of device data with PII masked."""
-    masked = dict(data)
-    for key in ("serial_number", "mac_address", "name", "nickname", "id", "device_id", "appliance_id"):
-        if key in masked:
+    """Return a copy of device/appliance data with PII masked recursively."""
+    masked: dict[str, Any] = {}
+    for key, value in data.items():
+        if key in _SENSITIVE_KEYS:
             masked[key] = "***"
+        elif isinstance(value, dict):
+            masked[key] = _mask_device_data(value)
+        elif isinstance(value, list):
+            masked[key] = [
+                _mask_device_data(item) if isinstance(item, dict) else item
+                for item in value
+            ]
+        else:
+            masked[key] = value
     return masked
 
 
@@ -24,13 +44,7 @@ def _mask_devices(devices: dict) -> dict:
 
 
 def _mask_appliances(appliances: dict) -> dict:
-    result = {}
-    for app_id, app in appliances.items():
-        masked = dict(app)
-        if "device" in masked:
-            masked["device"] = _mask_device_data(masked["device"])
-        result[app_id] = masked
-    return result
+    return {app_id: _mask_device_data(app) for app_id, app in appliances.items()}
 
 
 async def async_get_config_entry_diagnostics(

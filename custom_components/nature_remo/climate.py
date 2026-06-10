@@ -15,13 +15,34 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from .api import NatureRemoAuthError
+from .api import NatureRemoAPI, NatureRemoAuthError
 from .coordinator import NatureRemoCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
 from .const import DOMAIN, HA_MODE_TO_REMO_MODE, REMO_MODE_TO_HA_MODE
 from .entity import get_device_info
+
+
+async def async_apply_ac_preset(
+    api: NatureRemoAPI,
+    appliance_id: str,
+    preset_mode: str,
+    hvac_mode: HVACMode,
+    target_temperature: float | int | str,
+) -> dict:
+    """Build the AC preset payload and send it via the API."""
+    if preset_mode == "eco":
+        payload = {"button": "eco", "temperature": "26"}
+    else:
+        operation_mode = HA_MODE_TO_REMO_MODE.get(hvac_mode.value)
+        if operation_mode is None:
+            raise HomeAssistantError(f"Invalid HVAC mode: {hvac_mode}")
+        payload = {
+            "operation_mode": operation_mode,
+            "temperature": str(target_temperature),
+        }
+    return await api.send_command_climate(payload, appliance_id)
 
 
 async def async_setup_entry(
@@ -109,32 +130,29 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
         return self._preset_mode
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
-        if preset_mode == "eco":
-            payload = {"button": "eco", "temperature": "26"}
-            await self._apply_preset(preset_mode, 26, payload)
-        else:
-            operation_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
-            if operation_mode is None:
-                self._preset_mode = PRESET_NONE
-                self.async_write_ha_state()
-                return
-            payload = {
-                "operation_mode": operation_mode,
-                "temperature": str(self._target_temperature),
-            }
-            await self._apply_preset(PRESET_NONE, self._target_temperature, payload)
-
-    async def _apply_preset(self, preset_mode: str, target_temp: float, payload: dict) -> None:
+        target_temp = 26 if preset_mode == "eco" else self._target_temperature
         prev_preset = self._preset_mode
         prev_temp = self._target_temperature
         prev_button = self._button
         try:
-            response = await self._api.send_command_climate(payload, self._appliance_id)
-            self._preset_mode = preset_mode
+            response = await async_apply_ac_preset(
+                self._api,
+                self._appliance_id,
+                preset_mode,
+                self._hvac_mode,
+                target_temp,
+            )
+            self._preset_mode = preset_mode if preset_mode == "eco" else PRESET_NONE
             self._target_temperature = target_temp
             self._button = ""
             self._update_from_response(response)
             self.async_write_ha_state()
+        except HomeAssistantError:
+            if preset_mode != "eco":
+                self._preset_mode = PRESET_NONE
+                self.async_write_ha_state()
+                return
+            raise
         except NatureRemoAuthError as err:
             raise ConfigEntryAuthFailed(f"Authentication failed: {err}") from err
         except (ClientError, TimeoutError):
@@ -514,10 +532,12 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
         self._button = response.get("button", "")
 
     def format_temperature(self, value: float) -> str:
-        if value.is_integer():
-            return str(int(value))
-        else:
-            return str(value)
+        try:
+            if float(value).is_integer():
+                return str(int(value))
+        except (TypeError, ValueError):
+            pass
+        return str(value)
 
     async def async_set_fan_mode(self, fan_mode: str) -> None:
         operation_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
