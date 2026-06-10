@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from homeassistant.config_entries import ConfigEntry
@@ -29,10 +30,31 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Respect Nature Cloud API rate limit: 30 requests / 5 min.
     # Each refresh issues 2 requests (devices + appliances), so 30 s is the safe floor.
     min_update_interval = 30
-    update_interval = max(min_update_interval, int(entry.options.get("update_interval", DEFAULT_UPDATE_INTERVAL)))
+    try:
+        update_interval = int(entry.options.get("update_interval", DEFAULT_UPDATE_INTERVAL))
+    except ValueError:
+        _LOGGER.warning(
+            "Invalid update_interval value for %s: %s. Falling back to %s seconds.",
+            entry.entry_id,
+            entry.options.get("update_interval"),
+            DEFAULT_UPDATE_INTERVAL,
+        )
+        update_interval = DEFAULT_UPDATE_INTERVAL
+    update_interval = max(min_update_interval, update_interval)
     coordinator = NatureRemoCoordinator(hass, api, update_interval)
 
-    motion_threshold = int(entry.options.get("motion_threshold_minutes", DEFAULT_MOTION_THRESHOLD_MINUTES))
+    try:
+        motion_threshold = int(
+            entry.options.get("motion_threshold_minutes", DEFAULT_MOTION_THRESHOLD_MINUTES)
+        )
+    except ValueError:
+        _LOGGER.warning(
+            "Invalid motion_threshold_minutes value for %s: %s. Falling back to %s minutes.",
+            entry.entry_id,
+            entry.options.get("motion_threshold_minutes"),
+            DEFAULT_MOTION_THRESHOLD_MINUTES,
+        )
+        motion_threshold = DEFAULT_MOTION_THRESHOLD_MINUTES
     if motion_threshold < 1:
         motion_threshold = 1
     coordinator.motion_threshold_minutes = motion_threshold
@@ -62,6 +84,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         target_entry_data = None
         light_entity = None
         for entry_data in list(hass.data[DOMAIN].values()):
+            if not isinstance(entry_data, dict):
+                continue
             coordinator = entry_data["coordinator"]
             light_entity = coordinator.entity_map.get(entity_id)
             if light_entity is not None:
@@ -79,7 +103,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         try:
             await api.send_light_command(light_entity.appliance_id, mode)
         except NatureRemoAuthError as err:
-            raise ConfigEntryAuthFailed(f"Authentication failed: {err}") from err
+            raise HomeAssistantError(f"Authentication failed: {err}") from err
+        except asyncio.CancelledError:
+            raise
         except Exception as err:
             raise HomeAssistantError(f"Light command failed: {err}") from err
         light_entity.set_mode(mode)
@@ -94,6 +120,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         target_api = None
         for entry_data in list(hass.data[DOMAIN].values()):
+            if not isinstance(entry_data, dict):
+                continue
             coordinator = entry_data["coordinator"]
             if (
                 appliance_id in coordinator.aircons
@@ -112,25 +140,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             result = await target_api.learn_signal(appliance_id)
             return result
         except NatureRemoAuthError as err:
-            raise ConfigEntryAuthFailed(f"Authentication failed: {err}") from err
+            raise HomeAssistantError(f"Authentication failed: {err}") from err
+        except asyncio.CancelledError:
+            raise
         except Exception as err:
             raise HomeAssistantError(f"Signal learn failed: {err}") from err
 
-    if not hass.services.has_service(DOMAIN, "send_light_mode"):
+    services_registered = hass.data[DOMAIN].setdefault("_services_registered", False)
+    if not services_registered:
         hass.services.async_register(
             DOMAIN,
             "send_light_mode",
             handle_send_light_mode,
             supports_response=SupportsResponse.OPTIONAL,
         )
-
-    if not hass.services.has_service(DOMAIN, "learn_signal"):
         hass.services.async_register(
             DOMAIN,
             "learn_signal",
             handle_learn_signal,
             supports_response=SupportsResponse.OPTIONAL,
         )
+        hass.data[DOMAIN]["_services_registered"] = True
 
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
@@ -143,12 +173,15 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    coordinator: NatureRemoCoordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
+    domain_data = hass.data.get(DOMAIN, {})
+    entry_data = domain_data.get(entry.entry_id, {})
+    coordinator: NatureRemoCoordinator | None = entry_data.get("coordinator")
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    if unload_ok:
+    if unload_ok and coordinator is not None:
         await coordinator.async_shutdown()
-        hass.data[DOMAIN].pop(entry.entry_id, None)
-        if not hass.data[DOMAIN]:
+        domain_data.pop(entry.entry_id, None)
+        # Only remove services when no config entries remain (keep the flag key)
+        if domain_data == {"_services_registered": True}:
             hass.services.async_remove(DOMAIN, "send_light_mode")
             hass.services.async_remove(DOMAIN, "learn_signal")
             hass.data.pop(DOMAIN, None)

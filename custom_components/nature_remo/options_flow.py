@@ -7,16 +7,19 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
 from homeassistant.helpers.device_registry import async_get as async_get_device_registry
 
-from .const import DOMAIN
+from .const import CONF_LOCAL_IP, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
+
+_GLOBAL_OPTION_KEYS = ("update_interval", "motion_threshold_minutes", CONF_LOCAL_IP)
+_PER_DEVICE_PREFIXES = ("external_temperature_", "external_humidity_")
 
 
 class NatureRemoOptionsFlowHandler(config_entries.OptionsFlow):
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
-        # Pass config_entry to the parent where supported; fall back for older HA versions.
+        # Some HA versions do not accept config_entry in OptionsFlow.__init__.
         try:
             super().__init__(config_entry)
         except TypeError:
@@ -49,6 +52,7 @@ class NatureRemoOptionsFlowHandler(config_entries.OptionsFlow):
             ),
         }
 
+        known_device_ids: set[str] = set()
         for device in devices:
             name = device.name_by_user or device.name or "Unknown Device"
 
@@ -69,6 +73,8 @@ class NatureRemoOptionsFlowHandler(config_entries.OptionsFlow):
                     name,
                 )
                 continue
+
+            known_device_ids.add(nature_remo_device_id)
 
             _LOGGER.debug(
                 "デバイス '%s' のNature Remo device ID: %s"
@@ -108,7 +114,17 @@ class NatureRemoOptionsFlowHandler(config_entries.OptionsFlow):
             )
 
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            persisted_options = {
+                key: value
+                for key, value in user_input.items()
+                if key in _GLOBAL_OPTION_KEYS
+                or any(
+                    key.startswith(prefix)
+                    and key[len(prefix) :] in known_device_ids
+                    for prefix in _PER_DEVICE_PREFIXES
+                )
+            }
+            return self.async_create_entry(title="", data=persisted_options)
 
         return self.async_show_form(
             step_id="init",

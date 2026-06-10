@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "homeassistant-nature-remo"
-version = "0.6.5"
+version = "0.6.6"
 description = "Home Assistant custom integration for Nature Remo"
 readme = "README.md"
 license = { text = "MIT" }
@@ -64,3 +64,11 @@ warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
 follow_untyped_imports = false
+
+[tool.coverage.run]
+branch = true
+source = ["custom_components/nature_remo"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true

@@ -64,5 +64,22 @@
         }
       }
     }
+  },
+  "exceptions": {
+    "entity_not_found": {
+      "message": "Entity {entity_id} was not found."
+    },
+    "appliance_not_found": {
+      "message": "Appliance {appliance_id} was not found."
+    },
+    "invalid_light_mode": {
+      "message": "Light mode '{mode}' is not supported by this entity."
+    },
+    "unknown_remote_command": {
+      "message": "Unknown remote commands: {commands}"
+    },
+    "api_request_failed": {
+      "message": "API request failed: {error}"
+    }
   }
 }

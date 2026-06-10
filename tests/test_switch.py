@@ -9,6 +9,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 
+from custom_components.nature_remo.api import NatureRemoAuthError
+
 
 async def test_switch_async_setup_entry_creates_entity(
     hass: HomeAssistant, setup_integration, coordinator_data, mock_api
@@ -153,6 +155,31 @@ async def test_switch_turn_on_rolls_back_on_api_error(
     mock_api.send_command_signal = AsyncMock(side_effect=ClientError("boom"))
 
     with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            "switch",
+            "turn_on",
+            {ATTR_ENTITY_ID: "switch.living_room"},
+            blocking=True,
+        )
+
+    state = hass.states.get("switch.living_room")
+    assert state.state == "off"
+
+
+async def test_switch_turn_on_propagates_auth_error(
+    hass: HomeAssistant, setup_integration, coordinator_data, mock_api
+):
+    """Test turn_on propagates NatureRemoAuthError as ConfigEntryAuthFailed."""
+    await setup_integration(
+        devices=coordinator_data["devices"],
+        appliances=coordinator_data["appliances"],
+    )
+
+    mock_api.send_command_signal = AsyncMock(
+        side_effect=NatureRemoAuthError("unauthorized")
+    )
+
+    with pytest.raises(HomeAssistantError, match="Authentication failed"):
         await hass.services.async_call(
             "switch",
             "turn_on",

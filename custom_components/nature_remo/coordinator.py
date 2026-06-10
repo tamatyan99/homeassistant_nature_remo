@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Any
@@ -195,5 +196,7 @@ class NatureRemoCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(f"Data processing error: {err}") from err
         except ValueError as err:
             raise UpdateFailed(f"Data parse error: {err}") from err
+        except asyncio.CancelledError:
+            raise
         except Exception as err:
             raise UpdateFailed(f"Unexpected error: {err}") from err

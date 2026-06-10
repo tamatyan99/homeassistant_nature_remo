@@ -19,12 +19,16 @@ class NatureRemoAuthError(Exception):
 
 
 class NatureRemoAPI:
+    _DEFAULT_TIMEOUT = ClientTimeout(total=30, connect=10)
 
     def __init__(self, hass: HomeAssistant, token: str, local_ip: str | None = None) -> None:
         self._token = token
         self._session = async_get_clientsession(hass)
         self._local_ip = local_ip
-        self._cloud_headers = {"Authorization": f"Bearer {token}"}
+        self._cloud_headers = {
+            "Authorization": f"Bearer {token}",
+            "User-Agent": "HomeAssistant-NatureRemo/0.6.6",
+        }
         self._local_headers = {"X-Requested-With": "homeassistant"}
         self._cloud_request_lock = asyncio.Lock()
 
@@ -40,7 +44,7 @@ class NatureRemoAPI:
 
         if rate_reset is not None:
             try:
-                reset_time = datetime.fromtimestamp(int(rate_reset))
+                reset_time = datetime.fromtimestamp(int(rate_reset), tz=UTC)
             except (ValueError, TypeError):
                 reset_time = "unknown"
         else:
@@ -78,10 +82,10 @@ class NatureRemoAPI:
 
     async def _parse_json_response(self, response) -> dict | list:
         """Parse a successful JSON response and validate its type."""
+        text = await response.text()
         try:
-            data_resp = await response.json()
+            data_resp = json.loads(text)
         except json.JSONDecodeError as err:
-            text = await response.text()
             _LOGGER.error("Invalid JSON response: %s", text[:500])
             raise ClientError(f"Invalid JSON response: {err}") from err
         if not isinstance(data_resp, (list, dict)):
@@ -107,7 +111,7 @@ class NatureRemoAPI:
         """Send an HTTP request to the Nature Remo API with retry logic."""
         base_url = self._get_base_url() if use_local else NATURE_REMO_CLOUD_URL
         url = f"{base_url}{path}"
-        timeout = ClientTimeout(total=30, connect=10)
+        timeout = self._DEFAULT_TIMEOUT
         headers = self._local_headers if use_local else self._cloud_headers
         skip_auto_headers = {"Expect"} if use_local else None
         lock_ctx = contextlib.nullcontext() if use_local else self._cloud_request_lock
@@ -137,7 +141,7 @@ class NatureRemoAPI:
 
                         if response.status == 429:
                             _LOGGER.warning("API rate limit hit (429)")
-                            if attempt < max_retries:
+                            if method == "GET" and attempt < max_retries:
                                 retry_delay = self._rate_limit_delay(response)
                                 _LOGGER.warning(
                                     "Rate limited. Retrying in %d seconds...", retry_delay
@@ -145,19 +149,31 @@ class NatureRemoAPI:
                             else:
                                 body = await response.text()
                                 _LOGGER.error("Rate limit exceeded after retries: %s", body[:500])
-                                raise ClientError(
+                                exc = ClientError(
                                     f"API rate limit exceeded (429). Response: {body[:200]}"
                                 )
+                                exc.retryable = False
+                                raise exc
 
                         elif response.ok:
                             return await self._parse_json_response(response)
 
+                        elif response.status in {502, 503, 504} and attempt < max_retries:
+                            retry_delay = min(2 ** attempt, 30)
+                            _LOGGER.warning(
+                                "Server error %s. Retrying in %d seconds...",
+                                response.status,
+                                retry_delay,
+                            )
+
                         else:
                             body = await response.text()
                             _LOGGER.error("API request failed: %s - %s", response.status, body[:500])
-                            raise ClientError(
+                            exc = ClientError(
                                 f"API request failed with status {response.status}: {body[:200]}"
                             )
+                            exc.retryable = False
+                            raise exc
 
                 except NatureRemoAuthError:
                     raise
@@ -165,6 +181,16 @@ class NatureRemoAPI:
                     if attempt < max_retries:
                         retry_delay = 2 ** attempt
                         _LOGGER.warning("Request timed out. Retrying in %d seconds...", retry_delay)
+                    else:
+                        raise
+                except ClientError as err:
+                    # Retry transport-level errors and explicitly retryable HTTP statuses.
+                    # Application-level errors raised above are marked non-retryable.
+                    if getattr(err, "retryable", True) and attempt < max_retries:
+                        retry_delay = min(2 ** attempt, 30)
+                        _LOGGER.warning(
+                            "Request failed (%s). Retrying in %d seconds...", err, retry_delay
+                        )
                     else:
                         raise
 
@@ -308,6 +334,8 @@ class NatureRemoAPI:
 
     async def send_local_ir_message(self, freq: int, data: list[int]) -> dict:
         _LOGGER.debug("Sending local IR message: freq=%s data_length=%s", freq, len(data))
+        if not self._local_ip:
+            raise ValueError("local_ip is required for local IR messaging")
         path = "/messages"
         payload = {"freq": freq, "data": data, "format": "us"}
         try:

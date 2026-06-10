@@ -284,3 +284,57 @@ async def test_options_flow_per_device_defaults_and_persistence(
         "external_humidity_remo-2": "sensor.balcony_humidity",
     }
     assert entry.options == result["data"]
+
+
+async def test_options_flow_removes_stale_per_device_keys(hass: HomeAssistant):
+    """Test that per-device keys for removed devices are not persisted."""
+    entry = _create_entry(
+        hass,
+        options={
+            "update_interval": DEFAULT_UPDATE_INTERVAL,
+            "motion_threshold_minutes": DEFAULT_MOTION_THRESHOLD_MINUTES,
+            CONF_LOCAL_IP: "",
+            "external_temperature_remo-current": "sensor.current_temp",
+            "external_humidity_remo-current": "sensor.current_humidity",
+            "external_temperature_remo-stale": "sensor.stale_temp",
+            "external_humidity_remo-stale": "sensor.stale_humidity",
+        },
+    )
+    await _setup_entry(hass, entry)
+
+    device_registry = async_get_device_registry(hass)
+    device_registry.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, "remo-current")},
+        name="Remo Current",
+    )
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    schema = result["data_schema"]
+    fields = _schema_field_names(schema)
+
+    assert "external_temperature_remo-current" in fields
+    assert "external_humidity_remo-current" in fields
+    assert "external_temperature_remo-stale" not in fields
+    assert "external_humidity_remo-stale" not in fields
+
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={
+            "update_interval": 30,
+            "motion_threshold_minutes": 1,
+            CONF_LOCAL_IP: "10.0.0.1",
+            "external_temperature_remo-current": "sensor.current_temp",
+            "external_humidity_remo-current": "sensor.current_humidity",
+        },
+    )
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["data"] == {
+        "update_interval": 30,
+        "motion_threshold_minutes": 1,
+        CONF_LOCAL_IP: "10.0.0.1",
+        "external_temperature_remo-current": "sensor.current_temp",
+        "external_humidity_remo-current": "sensor.current_humidity",
+    }
+    assert entry.options == result["data"]

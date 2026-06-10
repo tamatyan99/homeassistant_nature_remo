@@ -6,8 +6,13 @@ import pytest
 from aiohttp import ClientError
 from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import (
+    HomeAssistantError,
+    ServiceValidationError,
+)
 from homeassistant.helpers import entity_registry as er
+
+from custom_components.nature_remo.api import NatureRemoAuthError
 
 
 async def test_remote_async_setup_entry_creates_entity(
@@ -177,6 +182,74 @@ async def test_remote_send_command_failure_raises_error(
     mock_api.send_command_signal = AsyncMock(side_effect=ClientError("boom"))
 
     with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            "remote",
+            "send_command",
+            {ATTR_ENTITY_ID: "remote.living_room", "command": ["volume up"]},
+            blocking=True,
+        )
+
+
+async def test_remote_send_command_unknown_command_raises(
+    hass: HomeAssistant, setup_integration, coordinator_data, mock_api
+):
+    """Test send_command raises ServiceValidationError for unknown commands."""
+    await setup_integration(
+        devices=coordinator_data["devices"],
+        appliances=coordinator_data["appliances"],
+    )
+
+    mock_api.send_command_signal = AsyncMock(return_value={})
+
+    with pytest.raises(ServiceValidationError, match="Unknown commands: bogus"):
+        await hass.services.async_call(
+            "remote",
+            "send_command",
+            {ATTR_ENTITY_ID: "remote.living_room", "command": ["bogus"]},
+            blocking=True,
+        )
+
+    # Unknown commands do not result in API calls.
+    mock_api.send_command_signal.assert_not_awaited()
+
+
+async def test_remote_turn_on_rolls_back_on_api_error(
+    hass: HomeAssistant, setup_integration, coordinator_data, mock_api
+):
+    """Test that remote state rolls back on API error."""
+    await setup_integration(
+        devices=coordinator_data["devices"],
+        appliances=coordinator_data["appliances"],
+    )
+
+    mock_api.send_command_signal = AsyncMock(side_effect=ClientError("boom"))
+
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            "remote",
+            "turn_on",
+            {ATTR_ENTITY_ID: "remote.living_room"},
+            blocking=True,
+        )
+
+    state = hass.states.get("remote.living_room")
+    assert state.attributes["command"] == "off"
+
+
+async def test_remote_send_command_propagates_auth_error(
+    hass: HomeAssistant, setup_integration, coordinator_data, mock_api
+):
+    """Test send_command propagates NatureRemoAuthError as ConfigEntryAuthFailed."""
+    await setup_integration(
+        devices=coordinator_data["devices"],
+        appliances=coordinator_data["appliances"],
+    )
+
+    mock_api.send_command_signal = AsyncMock(
+        side_effect=NatureRemoAuthError("unauthorized")
+    )
+
+    with pytest.raises(HomeAssistantError, match="Authentication failed"):
         await hass.services.async_call(
             "remote",
             "send_command",

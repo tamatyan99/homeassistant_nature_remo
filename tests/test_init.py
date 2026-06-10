@@ -12,7 +12,7 @@ from custom_components.nature_remo.const import DOMAIN
 
 def test_switch_imports():
     """Test switch platform imports do not fail."""
-    from custom_components.nature_remo.switch import OFF_COMMANDS, ON_COMMANDS
+    from custom_components.nature_remo.const import OFF_COMMANDS, ON_COMMANDS
 
     assert "on" in ON_COMMANDS
     assert "off" in OFF_COMMANDS
@@ -20,7 +20,7 @@ def test_switch_imports():
 
 def test_remote_imports():
     """Test remote platform imports do not fail."""
-    from custom_components.nature_remo.remote import OFF_COMMANDS, ON_COMMANDS
+    from custom_components.nature_remo.const import OFF_COMMANDS, ON_COMMANDS
 
     assert "on" in ON_COMMANDS
     assert "off" in OFF_COMMANDS
@@ -243,3 +243,245 @@ async def test_learn_signal_service(hass):
 
     api_mock.learn_signal.assert_awaited_once_with("app-1")
     assert result == {"id": "signal-1"}
+
+
+async def test_send_light_mode_entity_not_found(hass):
+    """Test send_light_mode raises when the entity_id is not found."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"api_key": "test_key"},
+        entry_id="test-entry-light-not-found",
+    )
+    entry.add_to_hass(hass)
+
+    api_mock = AsyncMock()
+    api_mock.get_devices = AsyncMock(return_value=[])
+    api_mock.get_appliances = AsyncMock(return_value=[])
+
+    coordinator_mock = MagicMock()
+    coordinator_mock.entity_map = {}
+
+    with patch(
+        "custom_components.nature_remo.NatureRemoAPI",
+        return_value=api_mock,
+    ), patch(
+        "custom_components.nature_remo.coordinator.NatureRemoCoordinator._async_update_data",
+        return_value={},
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        hass.data[DOMAIN][entry.entry_id]["coordinator"] = coordinator_mock
+        hass.data[DOMAIN][entry.entry_id]["api"] = api_mock
+
+    with pytest.raises(ServiceValidationError, match="light.missing not found"):
+        await hass.services.async_call(
+            DOMAIN,
+            "send_light_mode",
+            {"entity_id": "light.missing", "mode": "on"},
+            blocking=True,
+        )
+
+
+async def test_send_light_mode_unsupported_effect(hass):
+    """Test send_light_mode raises when the requested effect is unsupported."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"api_key": "test_key"},
+        entry_id="test-entry-light-effect",
+    )
+    entry.add_to_hass(hass)
+
+    light_entity = MagicMock()
+    light_entity.supported_effects = ["on", "off"]
+
+    api_mock = AsyncMock()
+    api_mock.get_devices = AsyncMock(return_value=[])
+    api_mock.get_appliances = AsyncMock(return_value=[])
+
+    coordinator_mock = MagicMock()
+    coordinator_mock.entity_map = {"light.test_light": light_entity}
+
+    with patch(
+        "custom_components.nature_remo.NatureRemoAPI",
+        return_value=api_mock,
+    ), patch(
+        "custom_components.nature_remo.coordinator.NatureRemoCoordinator._async_update_data",
+        return_value={},
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        hass.data[DOMAIN][entry.entry_id]["coordinator"] = coordinator_mock
+        hass.data[DOMAIN][entry.entry_id]["api"] = api_mock
+
+    with pytest.raises(ServiceValidationError, match="Effect 'disco' is not supported"):
+        await hass.services.async_call(
+            DOMAIN,
+            "send_light_mode",
+            {"entity_id": "light.test_light", "mode": "disco"},
+            blocking=True,
+        )
+
+
+async def test_send_light_mode_api_error(hass):
+    """Test send_light_mode wraps API errors as HomeAssistantError."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"api_key": "test_key"},
+        entry_id="test-entry-light-api-err",
+    )
+    entry.add_to_hass(hass)
+
+    light_entity = MagicMock()
+    light_entity.supported_effects = ["on"]
+    light_entity.appliance_id = "light-1"
+    light_entity.set_mode = MagicMock()
+
+    api_mock = AsyncMock()
+    api_mock.get_devices = AsyncMock(return_value=[])
+    api_mock.get_appliances = AsyncMock(return_value=[])
+    api_mock.send_light_command = AsyncMock(side_effect=RuntimeError("cloud down"))
+
+    coordinator_mock = MagicMock()
+    coordinator_mock.entity_map = {"light.test_light": light_entity}
+
+    with patch(
+        "custom_components.nature_remo.NatureRemoAPI",
+        return_value=api_mock,
+    ), patch(
+        "custom_components.nature_remo.coordinator.NatureRemoCoordinator._async_update_data",
+        return_value={},
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        hass.data[DOMAIN][entry.entry_id]["coordinator"] = coordinator_mock
+        hass.data[DOMAIN][entry.entry_id]["api"] = api_mock
+
+    from homeassistant.exceptions import HomeAssistantError
+
+    with pytest.raises(HomeAssistantError, match="Light command failed"):
+        await hass.services.async_call(
+            DOMAIN,
+            "send_light_mode",
+            {"entity_id": "light.test_light", "mode": "on"},
+            blocking=True,
+        )
+
+
+async def test_learn_signal_missing_appliance_id(hass):
+    """Test learn_signal raises when appliance_id is missing."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"api_key": "test_key"},
+        entry_id="test-entry-learn-missing",
+    )
+    entry.add_to_hass(hass)
+
+    api_mock = AsyncMock()
+    api_mock.get_devices = AsyncMock(return_value=[])
+    api_mock.get_appliances = AsyncMock(return_value=[])
+
+    with patch(
+        "custom_components.nature_remo.NatureRemoAPI",
+        return_value=api_mock,
+    ), patch(
+        "custom_components.nature_remo.coordinator.NatureRemoCoordinator._async_update_data",
+        return_value={},
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    with pytest.raises(ServiceValidationError, match="appliance_id is required"):
+        await hass.services.async_call(
+            DOMAIN,
+            "learn_signal",
+            {},
+            blocking=True,
+        )
+
+
+async def test_learn_signal_appliance_not_found(hass):
+    """Test learn_signal raises when appliance_id is not known."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"api_key": "test_key"},
+        entry_id="test-entry-learn-not-found",
+    )
+    entry.add_to_hass(hass)
+
+    api_mock = AsyncMock()
+    api_mock.get_devices = AsyncMock(return_value=[])
+    api_mock.get_appliances = AsyncMock(return_value=[])
+
+    coordinator_mock = MagicMock()
+    coordinator_mock.aircons = {}
+    coordinator_mock.lights = {}
+    coordinator_mock.ir_remotes = {}
+
+    with patch(
+        "custom_components.nature_remo.NatureRemoAPI",
+        return_value=api_mock,
+    ), patch(
+        "custom_components.nature_remo.coordinator.NatureRemoCoordinator._async_update_data",
+        return_value={},
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        hass.data[DOMAIN][entry.entry_id]["coordinator"] = coordinator_mock
+        hass.data[DOMAIN][entry.entry_id]["api"] = api_mock
+
+    with pytest.raises(
+        ServiceValidationError, match="appliance_id 'app-missing' not found"
+    ):
+        await hass.services.async_call(
+            DOMAIN,
+            "learn_signal",
+            {"appliance_id": "app-missing"},
+            blocking=True,
+        )
+
+
+async def test_learn_signal_api_error(hass):
+    """Test learn_signal wraps API errors as HomeAssistantError."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"api_key": "test_key"},
+        entry_id="test-entry-learn-api-err",
+    )
+    entry.add_to_hass(hass)
+
+    api_mock = AsyncMock()
+    api_mock.get_devices = AsyncMock(return_value=[])
+    api_mock.get_appliances = AsyncMock(return_value=[])
+    api_mock.learn_signal = AsyncMock(side_effect=RuntimeError("cloud down"))
+
+    coordinator_mock = MagicMock()
+    coordinator_mock.aircons = {}
+    coordinator_mock.lights = {}
+    coordinator_mock.ir_remotes = {"app-1": {}}
+
+    with patch(
+        "custom_components.nature_remo.NatureRemoAPI",
+        return_value=api_mock,
+    ), patch(
+        "custom_components.nature_remo.coordinator.NatureRemoCoordinator._async_update_data",
+        return_value={},
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        hass.data[DOMAIN][entry.entry_id]["coordinator"] = coordinator_mock
+        hass.data[DOMAIN][entry.entry_id]["api"] = api_mock
+
+    from homeassistant.exceptions import HomeAssistantError
+
+    with pytest.raises(HomeAssistantError, match="Signal learn failed"):
+        await hass.services.async_call(
+            DOMAIN,
+            "learn_signal",
+            {"appliance_id": "app-1"},
+            blocking=True,
+        )

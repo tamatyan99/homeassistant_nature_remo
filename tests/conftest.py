@@ -6,7 +6,27 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.nature_remo.api import NatureRemoAPI
 from custom_components.nature_remo.const import DOMAIN
+
+
+def _options_flow_init(self, config_entry):
+    """Stub OptionsFlow.__init__ for test environments without config_entry support."""
+    self.config_entry = config_entry
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _patch_options_flow_init():
+    """Patch OptionsFlow.__init__ so integrations can call super().__init__(entry)."""
+    from homeassistant import config_entries
+
+    original = config_entries.OptionsFlow.__dict__.get("__init__")
+    config_entries.OptionsFlow.__init__ = _options_flow_init
+    yield
+    if original is None:
+        del config_entries.OptionsFlow.__init__
+    else:
+        config_entries.OptionsFlow.__init__ = original
 
 
 @pytest.fixture(autouse=True)
@@ -26,14 +46,15 @@ def mock_async_resolver():
 
 @pytest.fixture
 def mock_api():
-    """Return a mocked NatureRemoAPI."""
-    api = MagicMock()
+    """Return a mocked NatureRemoAPI with explicit AsyncMock specs."""
+    api = MagicMock(spec=NatureRemoAPI)
     api.get_devices = AsyncMock(return_value=[])
     api.get_appliances = AsyncMock(return_value=[])
     api.send_command_climate = AsyncMock(return_value={})
     api.send_light_command = AsyncMock(return_value={})
     api.send_command_signal = AsyncMock(return_value={})
     api.learn_signal = AsyncMock(return_value={"id": "signal-1"})
+    api.send_local_ir_message = AsyncMock(return_value={})
     api.parse_smart_meter_properties = MagicMock(
         return_value={"buy_power": 0, "sold_power": 0, "instant_power": 0}
     )
@@ -177,131 +198,15 @@ def coordinator_data():
 
 
 @pytest.fixture
-def mock_coordinator(hass, coordinator_data):
-    """Return a mocked NatureRemoCoordinator populated with sample data."""
-    from custom_components.nature_remo.coordinator import NatureRemoCoordinator
-
-    api = MagicMock()
-    api.parse_smart_meter_properties = MagicMock(
-        return_value={"buy_power": 0, "sold_power": 0, "instant_power": 0}
-    )
-    coordinator = NatureRemoCoordinator(hass, api, update_interval=60)
-    # Run update once to populate internal structures
-    coordinator.devices = {
-        "dev-1": {
-            "name": "Living Room",
-            "device_id": "dev-1",
-            "events": {
-                "te": {"val": 22.5},
-                "hu": {"val": 55.0},
-                "il": {"val": 100.0},
-                "pr": {"val": 1013.0},
-            },
-            "firmware_version": "1.0",
-            "serial_number": "SN001",
-            "mac_address": "AA:BB:CC:DD:EE:FF",
-        },
-        "dev-2": {
-            "name": "Bedroom Sensor",
-            "device_id": "dev-2",
-            "events": {},
-            "firmware_version": "1.0",
-            "serial_number": "SN002",
-            "mac_address": "AA:BB:CC:DD:EE:00",
-        },
-    }
-    coordinator.aircons = {
-        "ac-1": {
-            "name": "Living AC",
-            "appliance_id": "ac-1",
-            "device": {
-                "name": "Living Room",
-                "device_id": "dev-1",
-                "firmware_version": "1.0",
-                "serial_number": "SN001",
-                "mac_address": "AA:BB:CC:DD:EE:FF",
-            },
-        }
-    }
-    coordinator.lights = {
-        "light-1": {
-            "name": "Ceiling Light",
-            "appliance_id": "light-1",
-            "device": {
-                "name": "Living Room",
-                "device_id": "dev-1",
-                "firmware_version": "1.0",
-                "serial_number": "SN001",
-                "mac_address": "AA:BB:CC:DD:EE:FF",
-            },
-        }
-    }
-    coordinator.smart_meters = {
-        "sm-1": {
-            "name": "Smart Meter",
-            "appliance_id": "sm-1",
-            "device": {
-                "name": "Living Room",
-                "device_id": "dev-1",
-                "firmware_version": "1.0",
-                "serial_number": "SN001",
-                "mac_address": "AA:BB:CC:DD:EE:FF",
-            },
-            "buy_power": 12.3,
-            "sold_power": 4.5,
-            "current_power": 300.0,
-        }
-    }
-    coordinator.ir_remotes = {
-        "remote-1": {
-            "name": "TV Remote",
-            "appliance_id": "remote-1",
-            "device": {
-                "name": "Living Room",
-                "device_id": "dev-1",
-                "firmware_version": "1.0",
-                "serial_number": "SN001",
-                "mac_address": "AA:BB:CC:DD:EE:FF",
-            },
-            "signals": [
-                {"id": "sig-on", "name": "on"},
-                {"id": "sig-off", "name": "off"},
-                {"id": "sig-vol-up", "name": "volume up"},
-            ],
-        }
-    }
-    now = datetime.now(UTC)
-    created_at = now - timedelta(minutes=2)
-    coordinator.motion_sensors = {
-        "dev-2": {
-            "name": "Bedroom Sensor",
-            "device_id": "dev-2",
-            "last_motion": created_at,
-            "is_active": True,
-            "firmware_version": "1.0",
-            "serial_number": "SN002",
-            "mac_address": "AA:BB:CC:DD:EE:00",
-        }
-    }
-    coordinator.data = {
-        app["id"]: app for app in coordinator_data["appliances"]
-    }
-    coordinator.entity_map = {}
-    coordinator.async_request_refresh = AsyncMock()
-    coordinator.async_refresh = AsyncMock()
-    coordinator.last_update_success = True
-    return coordinator
-
-
-@pytest.fixture
 def setup_integration(hass, mock_api):
     """Set up the integration with mocked API and real coordinator logic."""
 
-    async def _setup(devices=None, appliances=None):
+    async def _setup(devices=None, appliances=None, options=None):
         entry = MockConfigEntry(
             domain=DOMAIN,
             data={"api_key": "test_key"},
             entry_id="test-entry",
+            options=options or {},
         )
         entry.add_to_hass(hass)
 

@@ -3,7 +3,7 @@
 
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.nature_remo.const import DOMAIN
+from custom_components.nature_remo.const import CONF_LOCAL_IP, DOMAIN
 from custom_components.nature_remo.diagnostics import async_get_config_entry_diagnostics
 
 
@@ -57,3 +57,21 @@ async def test_diagnostics_no_coordinator(hass):
 
     assert diagnostics["config_entry"]["api_key"] == "***"
     assert "devices" not in diagnostics
+
+
+async def test_diagnostics_redacts_local_ip(hass):
+    """Test that local_ip is redacted in diagnostics options."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"api_key": "test_key"},
+        entry_id="diag-local-ip",
+        options={CONF_LOCAL_IP: "192.168.1.50"},
+    )
+    entry.add_to_hass(hass)
+
+    hass.data.setdefault(DOMAIN, {})
+    hass.data[DOMAIN][entry.entry_id] = {}
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+
+    assert diagnostics["options"][CONF_LOCAL_IP] == "***"

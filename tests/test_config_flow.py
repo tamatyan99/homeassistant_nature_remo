@@ -223,6 +223,45 @@ async def test_reauth_duplicate_api_key(hass):
     assert result["reason"] == "already_configured"
 
 
+async def test_reauth_same_api_key(hass):
+    """Test that reauth with the same API key updates and reloads the entry."""
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    old_key = "old_api_key"
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"api_key": old_key},
+        unique_id=_unique_id(old_key),
+    )
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.nature_remo.config_flow.NatureRemoAPI.get_devices",
+        new=AsyncMock(return_value=[{"id": "device-1"}]),
+    ), patch.object(
+        hass.config_entries, "async_reload", new=AsyncMock()
+    ) as mock_reload:
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={
+                "source": config_entries.SOURCE_REAUTH,
+                "entry_id": entry.entry_id,
+            },
+        )
+        assert result["type"] == FlowResultType.FORM
+        assert result["step_id"] == "reauth"
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"api_key": old_key},
+        )
+
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "reauth_successful"
+    assert entry.data == {"api_key": old_key}
+    mock_reload.assert_awaited_once_with(entry.entry_id)
+
+
 async def test_unique_id_conflict(hass):
     """Test that a duplicate unique_id aborts the user flow."""
     from pytest_homeassistant_custom_component.common import MockConfigEntry

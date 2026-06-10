@@ -7,14 +7,14 @@ from aiohttp import ClientError
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .api import NatureRemoAPI
-from .const import DOMAIN, OFF_COMMANDS, ON_COMMANDS
+from .api import NatureRemoAPI, NatureRemoAuthError
+from .const import DOMAIN
 from .coordinator import NatureRemoCoordinator
-from .entity import get_device_info
+from .entity import build_ir_commands, get_device_info
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -31,10 +31,8 @@ async def async_setup_entry(
 
     entities = []
     for remote_info in coordinator.ir_remotes.values():
-        commands = {s["name"].lower(): s["id"] for s in remote_info["signals"]}
-        has_on = any(c in commands for c in ON_COMMANDS)
-        has_off = any(c in commands for c in OFF_COMMANDS)
-        if has_on or has_off:
+        commands, power_on_id, power_off_id = build_ir_commands(remote_info)
+        if power_on_id or power_off_id:
             entities.append(
                 NatureRemoSwitchEntity(
                     coordinator=coordinator, api=api, remote_info=remote_info
@@ -62,12 +60,8 @@ class NatureRemoSwitchEntity(CoordinatorEntity[NatureRemoCoordinator], SwitchEnt
         self._device = remote_info["device"]
         self._appliance_id = remote_info["appliance_id"]
         self._is_on = False
-        self._commands = {s["name"].lower(): s["id"] for s in remote_info["signals"]}
-        self._power_on_id = next(
-            (self._commands[c] for c in ON_COMMANDS if c in self._commands), None
-        )
-        self._power_off_id = next(
-            (self._commands[c] for c in OFF_COMMANDS if c in self._commands), None
+        self._commands, self._power_on_id, self._power_off_id = build_ir_commands(
+            remote_info
         )
 
     @property
@@ -78,12 +72,8 @@ class NatureRemoSwitchEntity(CoordinatorEntity[NatureRemoCoordinator], SwitchEnt
     def _handle_coordinator_update(self) -> None:
         remote_info = self.coordinator.ir_remotes.get(self._appliance_id)
         if remote_info:
-            self._commands = {s["name"].lower(): s["id"] for s in remote_info["signals"]}
-            self._power_on_id = next(
-                (self._commands[c] for c in ON_COMMANDS if c in self._commands), None
-            )
-            self._power_off_id = next(
-                (self._commands[c] for c in OFF_COMMANDS if c in self._commands), None
+            self._commands, self._power_on_id, self._power_off_id = build_ir_commands(
+                remote_info
             )
         super()._handle_coordinator_update()
 
@@ -97,11 +87,18 @@ class NatureRemoSwitchEntity(CoordinatorEntity[NatureRemoCoordinator], SwitchEnt
 
     async def async_turn_on(self) -> None:
         if self._power_on_id:
+            previous_is_on = self._is_on
             try:
                 await self._api.send_command_signal(self._power_on_id)
                 self._is_on = True
                 self.async_write_ha_state()
+            except NatureRemoAuthError as err:
+                self._is_on = previous_is_on
+                self.async_write_ha_state()
+                raise ConfigEntryAuthFailed(f"Authentication failed: {err}") from err
             except (ClientError, TimeoutError) as err:
+                self._is_on = previous_is_on
+                self.async_write_ha_state()
                 _LOGGER.error("Failed to send power ON command")
                 raise HomeAssistantError(
                     f"Power ON command failed for {self.name}"
@@ -113,11 +110,18 @@ class NatureRemoSwitchEntity(CoordinatorEntity[NatureRemoCoordinator], SwitchEnt
 
     async def async_turn_off(self) -> None:
         if self._power_off_id:
+            previous_is_on = self._is_on
             try:
                 await self._api.send_command_signal(self._power_off_id)
                 self._is_on = False
                 self.async_write_ha_state()
+            except NatureRemoAuthError as err:
+                self._is_on = previous_is_on
+                self.async_write_ha_state()
+                raise ConfigEntryAuthFailed(f"Authentication failed: {err}") from err
             except (ClientError, TimeoutError) as err:
+                self._is_on = previous_is_on
+                self.async_write_ha_state()
                 _LOGGER.error("Failed to send power OFF command")
                 raise HomeAssistantError(
                     f"Power OFF command failed for {self.name}"

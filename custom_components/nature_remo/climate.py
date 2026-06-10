@@ -1,5 +1,6 @@
 import contextlib
 import logging
+from collections.abc import Callable
 
 from aiohttp import ClientError
 from homeassistant.components.climate import (
@@ -139,6 +140,31 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
     def preset_mode(self) -> str | None:
         return self._preset_mode
 
+    async def _apply_climate_command(
+        self,
+        payload: dict,
+        *,
+        state_updates: dict,
+        rollback: dict,
+        post_success: Callable | None = None,
+    ) -> dict:
+        """Send a climate command and apply optimistic updates with rollback on network error."""
+        previous = {name: getattr(self, name) for name in rollback}
+        try:
+            response = await self._api.send_command_climate(payload, self._appliance_id)
+            for name, value in state_updates.items():
+                setattr(self, name, value)
+            if post_success is not None:
+                post_success(response)
+            return response
+        except NatureRemoAuthError as err:
+            raise ConfigEntryAuthFailed(f"Authentication failed: {err}") from err
+        except (ClientError, TimeoutError):
+            for name, value in previous.items():
+                setattr(self, name, value)
+            self.async_write_ha_state()
+            raise
+
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         if preset_mode not in self.preset_modes:
             raise HomeAssistantError(f"Invalid preset mode: {preset_mode}")
@@ -160,10 +186,10 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
             self._update_from_response(response)
             self.async_write_ha_state()
         except HomeAssistantError:
-            if preset_mode != "eco":
-                self._preset_mode = PRESET_NONE
-                self.async_write_ha_state()
-                return
+            self._preset_mode = prev_preset
+            self._target_temperature = prev_temp
+            self._button = prev_button
+            self.async_write_ha_state()
             raise
         except NatureRemoAuthError as err:
             raise ConfigEntryAuthFailed(f"Authentication failed: {err}") from err
@@ -342,6 +368,7 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
                 self._hvac_mode = hvac_mode
 
             self._button = appliance["settings"].get("button", "")
+            self._preset_mode = "eco" if self._button == "eco" else PRESET_NONE
 
             temp = appliance["settings"].get("temp", "20.0")
             try:
@@ -415,7 +442,7 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
 
         return entity_ids
 
-    def _on_external_sensor_state_changed(self, event) -> None:
+    async def _on_external_sensor_state_changed(self, event) -> None:
         entity_id = event.data.get("entity_id")
         new_state = event.data.get("new_state")
 
@@ -454,9 +481,6 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
         if hvac_mode not in self.hvac_modes:
             raise HomeAssistantError(f"Unsupported HVAC mode: {hvac_mode}")
 
-        prev_button = self._button
-        prev_hvac_mode = self._hvac_mode
-
         if hvac_mode == HVACMode.OFF:
             payload = _build_climate_payload(button="power-off")
         else:
@@ -466,25 +490,21 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
                 temperature=self.format_temperature(self._target_temperature),
             )
 
-        try:
-            response = await self._api.send_command_climate(payload, self._appliance_id)
-        except NatureRemoAuthError as err:
-            raise ConfigEntryAuthFailed(f"Authentication failed: {err}") from err
-        except (ClientError, TimeoutError):
-            self._button = prev_button
-            self._hvac_mode = prev_hvac_mode
-            self.async_write_ha_state()
-            raise
-
-        _LOGGER.info("Set HVACMode: %s", response)
-        self._preset_mode = PRESET_NONE
-        self._button = ""
-        self._update_from_response(response)
-        if hvac_mode == HVACMode.OFF:
-            self._button = "power-off"
-        elif self._button == "power-off":
+        def _post_success(response):
+            self._preset_mode = PRESET_NONE
             self._button = ""
+            self._update_from_response(response)
+            if hvac_mode == HVACMode.OFF:
+                self._button = "power-off"
+            elif self._button == "power-off":
+                self._button = ""
 
+        await self._apply_climate_command(
+            payload,
+            state_updates={},
+            rollback={"_button": self._button, "_hvac_mode": self._hvac_mode},
+            post_success=_post_success,
+        )
         self.async_write_ha_state()
 
     async def async_set_temperature(self, **kwargs):
@@ -504,21 +524,11 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
             temperature=set_temperature,
         )
 
-        prev_target = self._target_temperature
-        prev_button = self._button
-        try:
-            response = await self._api.send_command_climate(payload, self._appliance_id)
-            self._target_temperature = temperature
-            self._button = ""
-            self._update_from_response(response)
-        except NatureRemoAuthError as err:
-            raise ConfigEntryAuthFailed(f"Authentication failed: {err}") from err
-        except (ClientError, TimeoutError):
-            self._target_temperature = prev_target
-            self._button = prev_button
-            self.async_write_ha_state()
-            raise
-
+        await self._apply_climate_command(
+            payload,
+            state_updates={"_target_temperature": temperature, "_button": ""},
+            rollback={"_target_temperature": self._target_temperature, "_button": self._button},
+        )
         self.async_write_ha_state()
 
     def _update_from_response(self, response: dict) -> None:
@@ -554,21 +564,11 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
             air_volume=fan_mode,
         )
 
-        prev_fan = self._fan_mode
-        prev_button = self._button
-        try:
-            response = await self._api.send_command_climate(payload, self._appliance_id)
-            self._fan_mode = fan_mode
-            self._button = ""
-            self._update_from_response(response)
-        except NatureRemoAuthError as err:
-            raise ConfigEntryAuthFailed(f"Authentication failed: {err}") from err
-        except (ClientError, TimeoutError):
-            self._fan_mode = prev_fan
-            self._button = prev_button
-            self.async_write_ha_state()
-            raise
-
+        await self._apply_climate_command(
+            payload,
+            state_updates={"_fan_mode": fan_mode, "_button": ""},
+            rollback={"_fan_mode": self._fan_mode, "_button": self._button},
+        )
         self.async_write_ha_state()
 
     async def async_set_swing_mode(self, swing_mode: str) -> None:
@@ -581,21 +581,11 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
             air_direction=swing_mode,
         )
 
-        prev_swing = self._swing_mode
-        prev_button = self._button
-        try:
-            response = await self._api.send_command_climate(payload, self._appliance_id)
-            self._swing_mode = swing_mode
-            self._button = ""
-            self._update_from_response(response)
-        except NatureRemoAuthError as err:
-            raise ConfigEntryAuthFailed(f"Authentication failed: {err}") from err
-        except (ClientError, TimeoutError):
-            self._swing_mode = prev_swing
-            self._button = prev_button
-            self.async_write_ha_state()
-            raise
-
+        await self._apply_climate_command(
+            payload,
+            state_updates={"_swing_mode": swing_mode, "_button": ""},
+            rollback={"_swing_mode": self._swing_mode, "_button": self._button},
+        )
         self.async_write_ha_state()
 
     async def async_turn_on(self) -> None:

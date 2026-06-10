@@ -7,7 +7,7 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from .const import DOMAIN
+from .const import CONF_LOCAL_IP, DOMAIN
 
 _SENSITIVE_KEYS = {
     "serial_number",
@@ -57,9 +57,13 @@ async def async_get_config_entry_diagnostics(
     if "api_key" in config_entry_data:
         config_entry_data["api_key"] = "***"
 
+    options = dict(config_entry.options)
+    if CONF_LOCAL_IP in options:
+        options[CONF_LOCAL_IP] = "***"
+
     diagnostics: dict[str, Any] = {
         "config_entry": config_entry_data,
-        "options": dict(config_entry.options),
+        "options": options,
     }
 
     if coordinator is not None:

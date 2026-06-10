@@ -1,6 +1,7 @@
 """Tests for NatureRemoAPI."""
 
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -26,15 +27,10 @@ def _mock_response(status=200, json_data=None, text=None):
     response.ok = 200 <= status < 300
     response.headers = {}
     response.json = AsyncMock(return_value=json_data)
+    if text is None and json_data is not None:
+        text = json.dumps(json_data)
     response.text = AsyncMock(return_value=text or "")
     return response
-
-
-def _mock_session_method(mock_resp):
-    mock = MagicMock()
-    mock.return_value.__aenter__ = AsyncMock(return_value=mock_resp)
-    mock.return_value.__aexit__ = AsyncMock(return_value=False)
-    return mock
 
 
 def _mock_context_manager(mock_resp):
@@ -44,6 +40,13 @@ def _mock_context_manager(mock_resp):
         async def __aexit__(self, *args):
             return False
     return _Ctx()
+
+
+def _mock_session_method(mock_resp):
+    """Return a MagicMock session.request that yields the given response context."""
+    mock = MagicMock()
+    mock.return_value = _mock_context_manager(mock_resp)
+    return mock
 
 
 @pytest.fixture
@@ -136,14 +139,10 @@ class TestNatureRemoAPI:
         with pytest.raises(ClientError, match="API request failed with status 500"):
             await api.send_command_climate({}, "app-1")
 
-    async def test_send_local_ir_message_uses_cloud_by_default(self, api):
-        mock_resp = _mock_response(status=200, json_data={"status": "sent"})
-        api._session.request = _mock_session_method(mock_resp)
-        result = await api.send_local_ir_message(38, [100, 200])
-        assert result == {"status": "sent"}
-        call_args = api._session.request.call_args
-        assert call_args[0][0] == "POST"
-        assert call_args[0][1] == f"{NATURE_REMO_CLOUD_URL}/messages"
+    async def test_send_local_ir_message_raises_without_local_ip(self, api):
+        with pytest.raises(ValueError, match="local_ip is required for local IR messaging"):
+            await api.send_local_ir_message(38, [100, 200])
+        api._session.request.assert_not_called()
 
     async def test_send_local_ir_message_uses_local_ip(self, api_with_local_ip):
         mock_resp = _mock_response(status=200, json_data={"status": "sent"})
@@ -225,18 +224,37 @@ class TestNatureRemoAPI:
         assert result == {"status": "ok"}
         assert api._session.request.call_count == 2
 
-    async def test_call_api_retries_on_429_for_post(self, api):
+    async def test_call_api_does_not_retry_429_for_post(self, api):
         resp_429 = _mock_response(status=429)
         resp_429.headers = {"Retry-After": "1"}
-        resp_200 = _mock_response(status=200, json_data={"status": "ok"})
-        responses = [resp_429, resp_200]
+        api._session.request = _mock_session_method(resp_429)
+        with pytest.raises(ClientError, match="API rate limit exceeded"):
+            await api._call_api("POST", "/signals/sig-1/send")
+        assert api._session.request.call_count == 1
 
-        api._session.request = MagicMock(
-            side_effect=lambda *a, **k: _mock_context_manager(responses.pop(0))
-        )
-        result = await api._call_api("POST", "/signals/sig-1/send")
-        assert result == {"status": "ok"}
-        assert api._session.request.call_count == 2
+    async def test_send_light_command_failure(self, api):
+        mock_resp = _mock_response(status=500, text="Internal Server Error")
+        api._session.request = _mock_session_method(mock_resp)
+        with pytest.raises(ClientError, match="Light command failed"):
+            await api.send_light_command("app-1", "on")
+
+    async def test_send_command_signal_failure(self, api):
+        mock_resp = _mock_response(status=500, text="Internal Server Error")
+        api._session.request = _mock_session_method(mock_resp)
+        with pytest.raises(ClientError, match="Signal send failed"):
+            await api.send_command_signal("sig-1")
+
+    async def test_learn_signal_failure(self, api):
+        mock_resp = _mock_response(status=500, text="Internal Server Error")
+        api._session.request = _mock_session_method(mock_resp)
+        with pytest.raises(ClientError, match="Signal learn failed"):
+            await api.learn_signal("app-1")
+
+    async def test_send_local_ir_message_failure(self, api_with_local_ip):
+        mock_resp = _mock_response(status=500, text="Internal Server Error")
+        api_with_local_ip._session.request = _mock_session_method(mock_resp)
+        with pytest.raises(ClientError, match="Local IR message failed"):
+            await api_with_local_ip.send_local_ir_message(38, [100, 200])
 
     async def test_parse_smart_meter_properties(self, api):
         properties = [
