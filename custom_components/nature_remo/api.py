@@ -1,152 +1,274 @@
+import asyncio
+import contextlib
+import json
 import logging
-import aiohttp
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
+from typing import Any
 
-from datetime import datetime
+from aiohttp import ClientError, ClientTimeout
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 _LOGGER = logging.getLogger(__name__)
-NATURE_REMO_URL = "https://api.nature.global/1"
+NATURE_REMO_CLOUD_URL = "https://api.nature.global/1"
+
+
+class NatureRemoAuthError(Exception):
+    """Raised when the API returns 401 Unauthorized."""
 
 
 class NatureRemoAPI:
-    """
-    Nature RemoのAPIを管理するクラス.
-    Class to handle Nature Remo API communication.
-    """
+    _DEFAULT_TIMEOUT = ClientTimeout(total=30, connect=10)
 
-    def __init__(self, token) -> None:
-        """
-        Nature Remo APIの初期化.
-        Initialize the Nature Remo API.
-        """
+    def __init__(self, hass: HomeAssistant, token: str, local_ip: str | None = None) -> None:
         self._token = token
+        self._session = async_get_clientsession(hass)
+        self._local_ip = local_ip
+        self._cloud_headers = {
+            "Authorization": f"Bearer {token}",
+            "User-Agent": "HomeAssistant-NatureRemo/0.6.8",
+        }
+        self._local_headers = {"X-Requested-With": "homeassistant"}
+        self._cloud_request_lock = asyncio.Lock()
 
-    async def _get(self, path: str):
-        """
-        Nature RemoのAPI GETリクエスト用の内部メソッド.
-        Internal method to perform GET requests to the Nature Remo API.
-        """
-        headers = {"Authorization": f"Bearer {self._token}"}
-        url = f"{NATURE_REMO_URL}{path}"
-        async with (
-            aiohttp.ClientSession() as session,
-            session.get(url, headers=headers) as response,
-        ):
-            if response.status == 429:
-                _LOGGER.warning("API制限に達しました! 429 Too Many Requests.")
+    def _get_base_url(self) -> str:
+        if self._local_ip:
+            return f"http://{self._local_ip}"
+        return NATURE_REMO_CLOUD_URL
 
-            # レート制限系のヘッダを取得・ログ出力
-            rate_limit = response.headers.get("X-Rate-Limit-Limit")
-            rate_remaining = response.headers.get("X-Rate-Limit-Remaining")
-            rate_reset = response.headers.get("X-Rate-Limit-Reset")
-            # rate_resetを読める時間に変換する
-            reset_time = datetime.fromtimestamp(int(rate_reset))
+    def _log_rate_limits(self, response) -> None:
+        rate_limit = response.headers.get("X-Rate-Limit-Limit")
+        rate_remaining = response.headers.get("X-Rate-Limit-Remaining")
+        rate_reset = response.headers.get("X-Rate-Limit-Reset")
 
-            # デバッグログにリクエスト情報を出力する
-            _LOGGER.debug(
-                f"NatureRemo RateLimit → Limit: {rate_limit}, Remaining: {rate_remaining}, Reset: {reset_time}"
+        if rate_reset is not None:
+            try:
+                reset_time = datetime.fromtimestamp(int(rate_reset), tz=UTC)
+            except (ValueError, TypeError):
+                reset_time = "unknown"
+        else:
+            reset_time = "unknown"
+
+        _LOGGER.debug(
+            "NatureRemo RateLimit → Limit: %s, Remaining: %s, Reset: %s",
+            rate_limit,
+            rate_remaining,
+            reset_time,
+        )
+
+    @staticmethod
+    def _parse_retry_after(value: str | None, fallback: int) -> int:
+        """Parse Retry-After header per RFC 7231 (seconds or HTTP-date)."""
+        if not value:
+            return fallback
+        try:
+            return max(0, int(value))
+        except ValueError:
+            try:
+                dt = parsedate_to_datetime(value)
+                return max(0, int((dt - datetime.now(UTC)).total_seconds()))
+            except (ValueError, TypeError):
+                return fallback
+
+    def _rate_limit_delay(self, response, fallback: int = 60) -> int:
+        """Compute backoff delay from rate-limit response headers."""
+        reset_ts = response.headers.get("X-Rate-Limit-Reset")
+        if reset_ts:
+            with contextlib.suppress(ValueError, TypeError):
+                fallback = max(0, int(int(reset_ts) - datetime.now(UTC).timestamp()))
+        retry_after = response.headers.get("Retry-After")
+        return self._parse_retry_after(retry_after, fallback)
+
+    async def _parse_json_response(self, response) -> dict | list:
+        """Parse a successful JSON response and validate its type."""
+        text = await response.text()
+        try:
+            data_resp = json.loads(text)
+        except json.JSONDecodeError as err:
+            _LOGGER.error("Invalid JSON response: %s", text[:500])
+            exc = ClientError(f"Invalid JSON response: {err}")
+            exc.retryable = False
+            raise exc from err
+        if not isinstance(data_resp, (list, dict)):
+            _LOGGER.error(
+                "Unexpected response type from API: %s (expected list or dict)",
+                type(data_resp),
             )
+            raise ValueError(
+                f"Unexpected API response type: {type(data_resp)}"
+            )
+        return data_resp
 
-            if response.status == 200:
-                return await response.json()
+    async def _call_api(
+        self,
+        method: str,
+        path: str,
+        *,
+        data: dict | None = None,
+        json_payload: dict | None = None,
+        use_local: bool = False,
+        max_retries: int = 2,
+    ) -> dict | list:
+        """Send an HTTP request to the Nature Remo API with retry logic."""
+        base_url = self._get_base_url() if use_local else NATURE_REMO_CLOUD_URL
+        url = f"{base_url}{path}"
+        timeout = self._DEFAULT_TIMEOUT
+        headers = self._local_headers if use_local else self._cloud_headers
+        skip_auto_headers = {"Expect"} if use_local else None
+        lock_ctx = contextlib.nullcontext() if use_local else self._cloud_request_lock
 
-            _LOGGER.error("Failed to fetch request: %s", response.status)
-            return None
+        retry_delay: int | None = None
 
-    async def get_appliances(self):
-        """
-        Nature Remo API からすべての家電情報を取得.
-        Fetch all appliance information from the Nature Remo API.
-        """
+        for attempt in range(max_retries + 1):
+            can_retry = method == "GET" and attempt < max_retries
+            async with lock_ctx:
+                try:
+                    async with self._session.request(
+                        method,
+                        url,
+                        headers=headers,
+                        data=data,
+                        json=json_payload,
+                        timeout=timeout,
+                        skip_auto_headers=skip_auto_headers,
+                    ) as response:
+                        if not use_local:
+                            self._log_rate_limits(response)
+
+                        if response.status == 401:
+                            _LOGGER.error("Authentication failed: invalid API token")
+                            raise NatureRemoAuthError(
+                                "API request failed with status 401 (Unauthorized)"
+                            )
+
+                        if response.status == 429:
+                            _LOGGER.warning("API rate limit hit (429)")
+                            if can_retry:
+                                retry_delay = min(self._rate_limit_delay(response), 30)
+                                _LOGGER.warning(
+                                    "Rate limited. Retrying in %d seconds...", retry_delay
+                                )
+                            else:
+                                body = await response.text()
+                                _LOGGER.error("Rate limit exceeded after retries: %s", body[:500])
+                                exc = ClientError(
+                                    f"API rate limit exceeded (429). Response: {body[:200]}"
+                                )
+                                exc.retryable = False
+                                raise exc
+
+                        elif response.ok:
+                            return await self._parse_json_response(response)
+
+                        elif response.status in {502, 503, 504} and can_retry:
+                            retry_delay = min(2 ** attempt, 30)
+                            _LOGGER.warning(
+                                "Server error %s. Retrying in %d seconds...",
+                                response.status,
+                                retry_delay,
+                            )
+
+                        else:
+                            body = await response.text()
+                            _LOGGER.error("API request failed: %s - %s", response.status, body[:500])
+                            exc = ClientError(
+                                f"API request failed with status {response.status}: {body[:200]}"
+                            )
+                            exc.retryable = False
+                            raise exc
+
+                except NatureRemoAuthError:
+                    raise
+                except TimeoutError:
+                    if can_retry:
+                        retry_delay = 2 ** attempt
+                        _LOGGER.warning("Request timed out. Retrying in %d seconds...", retry_delay)
+                    else:
+                        raise
+                except ClientError as err:
+                    # Retry transport-level errors and explicitly retryable HTTP statuses.
+                    # Application-level errors raised above are marked non-retryable.
+                    if getattr(err, "retryable", True) and can_retry:
+                        retry_delay = min(2 ** attempt, 30)
+                        _LOGGER.warning(
+                            "Request failed (%s). Retrying in %d seconds...", err, retry_delay
+                        )
+                    else:
+                        raise
+
+            # Lock is released here; sleep outside the lock so other requests can proceed.
+            if retry_delay is not None:
+                await asyncio.sleep(retry_delay)
+                retry_delay = None
+
+        # Should never reach here, but guard against unexpected fall-through.
+        raise ClientError("API request failed after retries")
+
+    async def _get(self, path: str) -> dict | list:
+        return await self._call_api("GET", path)
+
+    async def get_appliances(self) -> list[dict[str, Any]]:
         return await self._get("/appliances")
 
-    async def get_devices(self):
-        """
-        Nature Remoのデバイス一覧を取得（温湿度センサー含む）.
-        Retrieve the list of devices from Nature Remo, including temperature and humidity sensors.
-        """
+    async def get_devices(self) -> list[dict[str, Any]]:
         return await self._get("/devices")
 
-    async def send_command_climate(self, payload, appliance_id):
-        """
-        Nature Remo APIを使ってエアコンを操作.
-        Control the air conditioner using the Nature Remo API.
-        """
-        _LOGGER.info("Setting payload: %s", payload)
-        headers = {"Authorization": f"Bearer {self._token}"}
-        api_url = f"{NATURE_REMO_URL}/appliances/{appliance_id}/aircon_settings"
+    async def send_command_climate(self, payload: dict[str, Any], appliance_id: str) -> dict:
+        _LOGGER.debug("Setting payload: %s", payload)
+        path = f"/appliances/{appliance_id}/aircon_settings"
+        try:
+            result = await self._call_api("POST", path, data=payload)
+            _LOGGER.debug("Climate command succeeded: %s", result)
+            return result
+        except NatureRemoAuthError:
+            raise
+        except (ClientError, TimeoutError) as err:
+            _LOGGER.error("Climate command failed: %s", err)
+            raise ClientError(f"Climate command failed: {err}") from err
 
-        async with (
-            aiohttp.ClientSession() as session,
-            session.post(api_url, headers=headers, data=payload) as response,
-        ):
-            # レート制限系のヘッダを取得・ログ出力
-            rate_limit = response.headers.get("X-Rate-Limit-Limit")
-            rate_remaining = response.headers.get("X-Rate-Limit-Remaining")
-            rate_reset = datetime.fromtimestamp(
-                int(response.headers.get("X-Rate-Limit-Reset"))
-            )
-
-            # デバッグログにリクエスト情報を出力
-            _LOGGER.debug(
-                f"NatureRemo RateLimit → Limit: {rate_limit}, Remaining: {rate_remaining}, Reset: {rate_reset}"
-            )
-
-            response_json = await response.json()
-            if response.status == 200:
-                _LOGGER.info(
-                    "エアコンの操作に成功しました: %s",
-                    response_json,
-                )
-            else:
-                _LOGGER.error(
-                    "エアコンの操作に失敗しました: %s",
-                    await response.text(),
-                )
-            return response_json
-
-    async def send_light_command(self, appliance_id: str, command: str):
-        """
-        Nature Remo LightのON/OFFを送信.
-        Send ON/OFF commands to Nature Remo Light.
-        """
-        _LOGGER.info(f"Send Light applicance_id:{appliance_id} command:{command}")
-        url = f"{NATURE_REMO_URL}/appliances/{appliance_id}/light"
-
-        headers = {"Authorization": f"Bearer {self._token}"}
+    async def send_light_command(self, appliance_id: str, command: str) -> dict:
+        _LOGGER.debug(
+            "Send Light appliance_id: %s command: %s", appliance_id, command
+        )
+        path = f"/appliances/{appliance_id}/light"
         payload = {"button": command}
+        try:
+            result = await self._call_api("POST", path, data=payload)
+            _LOGGER.debug("Light command succeeded: %s", result)
+            return result
+        except NatureRemoAuthError:
+            raise
+        except (ClientError, TimeoutError) as err:
+            _LOGGER.error("Light command failed: %s", err)
+            raise ClientError(f"Light command failed: {err}") from err
 
-        async with (
-            aiohttp.ClientSession() as session,
-            session.post(url, headers=headers, data=payload) as response,
-        ):
-            # レート制限系のヘッダを取得・ログ出力！
-            rate_limit = response.headers.get("X-Rate-Limit-Limit")
-            rate_remaining = response.headers.get("X-Rate-Limit-Remaining")
-            rate_reset = datetime.fromtimestamp(
-                int(response.headers.get("X-Rate-Limit-Reset"))
-            )
-
-            # デバッグログにリクエスト情報を出力
-            _LOGGER.debug(
-                f"NatureRemo RateLimit → Limit: {rate_limit}, Remaining: {rate_remaining}, Reset: {rate_reset}"
-            )
-
-            response_json = await response.json()
-            if response.status == 200:
-                _LOGGER.info("照明の操作に成功しました： %s", response_json)
-            else:
-                error_text = await response.text()
-                _LOGGER.error(
-                    f"Nature Remo API Error: {response.status} - {error_text}"
-                )
-            return response_json
+    async def learn_signal(self, appliance_id: str) -> dict:
+        path = f"/appliances/{appliance_id}/IR"
+        _LOGGER.warning(
+            "learn_signal uses a non-documented Nature Remo endpoint (%s); "
+            "it may stop working if the vendor changes the Cloud API.",
+            path,
+        )
+        try:
+            result = await self._call_api("POST", path)
+            _LOGGER.debug("Signal learned successfully: %s", appliance_id)
+            return result
+        except NatureRemoAuthError:
+            raise
+        except (ClientError, TimeoutError) as err:
+            _LOGGER.error("Signal learn failed: %s", err)
+            raise ClientError(f"Signal learn failed: {err}") from err
 
     def parse_smart_meter_properties(self, properties: list[dict]) -> dict:
-        """
-        Nature Remo E / E Liteのechonetlite_propertiesを元に買電・売電・瞬時電力をパースして返却する.
-        Parse echonetlite_properties from Nature Remo E / E Lite to extract buy/sell power and instantaneous power.
-        """
-        # 値が欠損している場合にも備え、各種初期値を定義
+        from .const import (
+            SMART_METER_EPC_BUY_POWER,
+            SMART_METER_EPC_COEFFICIENT,
+            SMART_METER_EPC_INSTANT_POWER,
+            SMART_METER_EPC_SOLD_POWER,
+            SMART_METER_EPC_UNIT,
+        )
+
         coefficient = 1
         unit_power = 0
         buy_power_raw = 0
@@ -154,28 +276,32 @@ class NatureRemoAPI:
         instant_power = 0
 
         for prop in properties:
-            epc = int(prop.get("epc"))
+            epc_val = prop.get("epc")
+            if epc_val is None:
+                continue
+            try:
+                epc = int(epc_val)
+            except (ValueError, TypeError):
+                continue
             val_str = prop.get("val", "0")
+            if val_str is None:
+                val_str = "0"
             try:
                 val = int(val_str)
-            except ValueError:
+            except (ValueError, TypeError):
                 val = 0
 
-            # epc（Echonet Lite Property）に応じて各値を格納
-            if epc == 211:  # 係数
+            if epc == SMART_METER_EPC_COEFFICIENT:
                 coefficient = val
-            elif epc == 215:  # 有効桁数（今回は使用せず）
-                continue
-            elif epc == 224:  # 積算買電量
-                buy_power_raw = val
-            elif epc == 225:  # 単位（指数）
+            elif epc == SMART_METER_EPC_UNIT:
                 unit_power = val
-            elif epc == 227:  # 積算売電量
+            elif epc == SMART_METER_EPC_BUY_POWER:
+                buy_power_raw = val
+            elif epc == SMART_METER_EPC_SOLD_POWER:
                 sold_power_raw = val
-            elif epc == 231:  # 瞬時電力（W）
+            elif epc == SMART_METER_EPC_INSTANT_POWER:
                 instant_power = val
 
-        # 単位変換テーブルを定義
         unit_table = {
             0x00: 1,
             0x01: 0.1,
@@ -188,29 +314,40 @@ class NatureRemoAPI:
             0x0D: 10000,
         }
 
-        # 取得した値を変換
         factor = coefficient * unit_table.get(unit_power, 1)
         buy_power = buy_power_raw * factor
         sold_power = sold_power_raw * factor
 
-        # センサー用データとして返却
         return {
             "buy_power": buy_power,
             "sold_power": sold_power,
             "instant_power": instant_power,
         }
 
-    async def send_command_signal(self, signal_id: str) -> None:
-        """
-        指定されたシグナルIDを使ってNature Remo APIを送信する.
-        Send a signal by its ID using the Nature Remo API.
-        """
-        api_url = f"{NATURE_REMO_URL}/signals/{signal_id}/send"
-        headers = {"Authorization": f"Bearer {self._token}"}
+    async def send_command_signal(self, signal_id: str) -> dict:
+        path = f"/signals/{signal_id}/send"
+        try:
+            # Swagger specifies an EmptyObject body for this endpoint.
+            result = await self._call_api("POST", path, data={})
+            return result
+        except NatureRemoAuthError:
+            raise
+        except (ClientError, TimeoutError) as err:
+            _LOGGER.error("Signal send failed: %s", err)
+            raise ClientError(f"Signal send failed: {err}") from err
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(api_url, headers=headers) as response:
-                if response.status != 200:
-                    text = await response.text()
-                    _LOGGER.error("Failed to send signal %s: %s", signal_id, text)
-                    response.raise_for_status()
+    async def send_local_ir_message(self, freq: int, data: list[int]) -> dict:
+        _LOGGER.debug("Sending local IR message: freq=%s data_length=%s", freq, len(data))
+        if not self._local_ip:
+            raise ValueError("local_ip is required for local IR messaging")
+        path = "/messages"
+        payload = {"freq": freq, "data": data, "format": "us"}
+        try:
+            result = await self._call_api("POST", path, json_payload=payload, use_local=True)
+            _LOGGER.debug("Local IR message sent successfully: %s", result)
+            return result
+        except NatureRemoAuthError:
+            raise
+        except (ClientError, TimeoutError) as err:
+            _LOGGER.error("Local IR message failed: %s", err)
+            raise ClientError(f"Local IR message failed: {err}") from err

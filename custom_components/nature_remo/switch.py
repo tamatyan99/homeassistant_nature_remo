@@ -4,13 +4,10 @@ import logging
 from typing import Any
 
 from aiohttp import ClientError
-from homeassistant.components.remote import RemoteEntity
+from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.exceptions import (
-    HomeAssistantError,
-    ServiceValidationError,
-)
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -32,17 +29,21 @@ async def async_setup_entry(
     ]
     api: NatureRemoAPI = hass.data[DOMAIN][entry.entry_id]["api"]
 
-    entities = [
-        NatureRemoRemoteEntity(
-            coordinator=coordinator, api=api, remote_info=remote_info
-        )
-        for remote_info in coordinator.ir_remotes.values()
-    ]
+    entities = []
+    for remote_info in coordinator.ir_remotes.values():
+        commands, power_on_id, power_off_id = build_ir_commands(remote_info)
+        if power_on_id or power_off_id:
+            entities.append(
+                NatureRemoSwitchEntity(
+                    coordinator=coordinator, api=api, remote_info=remote_info
+                )
+            )
 
     async_add_entities(entities, True)
 
 
-class NatureRemoRemoteEntity(CoordinatorEntity[NatureRemoCoordinator], RemoteEntity):
+class NatureRemoSwitchEntity(CoordinatorEntity[NatureRemoCoordinator], SwitchEntity):
+    _attr_icon = "mdi:remote"
     _attr_has_entity_name = True
     _attr_should_poll = False
 
@@ -53,13 +54,12 @@ class NatureRemoRemoteEntity(CoordinatorEntity[NatureRemoCoordinator], RemoteEnt
         remote_info: dict[str, Any],
     ) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = f"nature_remo_remote_{remote_info['appliance_id']}"
+        self._attr_unique_id = f"nature_remo_switch_{remote_info['appliance_id']}"
         self._attr_name = None
         self._api = api
         self._device = remote_info["device"]
         self._appliance_id = remote_info["appliance_id"]
-        self._remote_info = remote_info
-        self._attr_state = "off"
+        self._is_on = False
         self._commands, self._power_on_id, self._power_off_id = build_ir_commands(
             remote_info
         )
@@ -80,76 +80,49 @@ class NatureRemoRemoteEntity(CoordinatorEntity[NatureRemoCoordinator], RemoteEnt
         super()._handle_coordinator_update()
 
     @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        return {
-            "available_commands": list(self._commands.keys()),
-            "command": self._attr_state,
-        }
-
-    @property
     def available(self) -> bool:
         return super().available and bool(self._commands)
 
-    async def async_send_command(self, command: list[str], **kwargs: Any) -> None:
-        failed = []
-        unknown = []
-        for cmd in command:
-            signal_id = self._commands.get(cmd)
-            if signal_id is None:
-                unknown.append(cmd)
-                continue
-            try:
-                await self._api.send_command_signal(signal_id)
-            except NatureRemoAuthError as err:
-                _LOGGER.error("Authentication failed: %s", err)
-                raise HomeAssistantError(f"Authentication failed: {err}") from err
-            except ClientError as err:
-                failed.append(cmd)
-                _LOGGER.error("Failed to send command '%s': %s", cmd, err)
-        if unknown:
-            raise ServiceValidationError(
-                f"Unknown commands: {', '.join(unknown)}"
-            )
-        if failed:
-            raise ServiceValidationError(
-                f"Failed to send commands: {', '.join(failed)}"
-            )
-        self.async_write_ha_state()
+    @property
+    def is_on(self) -> bool:
+        return self._is_on
 
     async def async_turn_on(self) -> None:
         if self._power_on_id:
-            previous_state = self._attr_state
+            previous_is_on = self._is_on
             try:
                 await self._api.send_command_signal(self._power_on_id)
-                self._attr_state = "on"
+                self._is_on = True
                 self.async_write_ha_state()
             except NatureRemoAuthError as err:
-                self._attr_state = previous_state
+                self._is_on = previous_is_on
                 self.async_write_ha_state()
                 raise HomeAssistantError(f"Authentication failed: {err}") from err
             except ClientError as err:
-                self._attr_state = previous_state
+                self._is_on = previous_is_on
                 self.async_write_ha_state()
                 _LOGGER.error("Failed to send power ON command")
                 raise HomeAssistantError(
                     f"Power ON command failed for {self.name}"
                 ) from err
         else:
-            raise HomeAssistantError(f"Power ON command not available for {self.name}")
+            raise HomeAssistantError(
+                f"Power ON command not available for {self.name}"
+            )
 
     async def async_turn_off(self) -> None:
         if self._power_off_id:
-            previous_state = self._attr_state
+            previous_is_on = self._is_on
             try:
                 await self._api.send_command_signal(self._power_off_id)
-                self._attr_state = "off"
+                self._is_on = False
                 self.async_write_ha_state()
             except NatureRemoAuthError as err:
-                self._attr_state = previous_state
+                self._is_on = previous_is_on
                 self.async_write_ha_state()
                 raise HomeAssistantError(f"Authentication failed: {err}") from err
             except ClientError as err:
-                self._attr_state = previous_state
+                self._is_on = previous_is_on
                 self.async_write_ha_state()
                 _LOGGER.error("Failed to send power OFF command")
                 raise HomeAssistantError(

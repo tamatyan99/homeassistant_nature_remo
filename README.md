@@ -1,5 +1,9 @@
 # Nature Remo - Home Assistant Custom Integration
 
+[![Tests](https://github.com/tamatyan99/homeassistant_nature_remo/actions/workflows/test.yml/badge.svg)](https://github.com/tamatyan99/homeassistant_nature_remo/actions/workflows/test.yml)
+[![HACS Validation](https://github.com/tamatyan99/homeassistant_nature_remo/actions/workflows/hacs.yml/badge.svg)](https://github.com/tamatyan99/homeassistant_nature_remo/actions/workflows/hacs.yml)
+[![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
+
 ⭐ If this integration helps you, please consider giving it a star on GitHub!
 
 📄 日本語版のREADMEはこちら 👉 [README_ja.md](README_ja.md)
@@ -7,9 +11,13 @@
 This is a custom integration for linking Nature Remo devices with Home Assistant.  
 It enables you to control appliances like air conditioners and lights, and monitor temperature, humidity, and more directly in your smart home setup.
 
+This repository is a fork of [NaNaLinks/homeassistant_nature_remo](https://github.com/NaNaLinks/homeassistant_nature_remo) originally developed by [@nanosns](https://github.com/nanosns).  
+We appreciate the original author's work and continue development independently here.
+
 ---
 
 ## ⚠️ Disclaimer
+
 This is an **unofficial** integration and is not affiliated with Nature Inc. or Home Assistant.  
 Please use this integration **at your own risk**.
 
@@ -18,10 +26,14 @@ Please use this integration **at your own risk**.
 ## Features
 
 - Control appliances (air conditioners, lights) registered to Nature Remo
-- Retrieve temperature, humidity, illuminance, and motion sensor data
+- Retrieve temperature, humidity, illuminance, atmospheric pressure, and motion sensor data
 - Access smart meter data (consumption, generation, instant power) via Nature Remo E / E Lite
 - Control lighting modes using custom service calls
 - Send IR commands using remote entities created from defined signals
+- Switch entities for appliances with on/off signals
+- Binary motion sensor with configurable detection threshold
+- External temperature and humidity sensor override for climate entities
+- Local API support for IR message sending (data retrieval always uses the cloud API)
 
 ---
 
@@ -29,13 +41,13 @@ Please use this integration **at your own risk**.
 
 Click the button below to easily add this repository to HACS.
 
-[![Open your Home Assistant instance and open the repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=NaNaLinks&repository=homeassistant_nature_remo&category=integration)
+[![Open your Home Assistant instance and open the repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=tamatyan99&repository=homeassistant_nature_remo&category=integration)
 
 1. Open HACS in Home Assistant
 2. Click the menu (⋮) in the top right corner
 3. Select "Custom repositories"
 4. Add this repository URL:
-   https://github.com/NaNaLinks/homeassistant_nature_remo  
+   `https://github.com/tamatyan99/homeassistant_nature_remo`  
    Category: Integration
 5. Install "Nature Remo"
 6. Restart Home Assistant
@@ -65,8 +77,12 @@ Click the button below to easily add this repository to HACS.
 
 ## Options
 
-- You can set the update interval (in seconds)
-  - Default: `60 seconds`
+- You can select the update interval from preset choices (seconds)
+  - Choices: `30`, `60`, `90` (default: `60`)
+- You can select the motion detection threshold from preset choices (minutes)
+  - Choices: `1`, `3`, `5`, `10`, `15` (default: `5`)
+- You can configure a local IP address to communicate directly with your Nature Remo device
+- You can assign external temperature and humidity sensors per device
 
 ⚠️ Nature Remo Cloud API has rate limits.  
 Setting a very short update interval may cause the integration to reach the API request limit.
@@ -75,12 +91,18 @@ Setting a very short update interval may cause the integration to reach the API 
 
 ## Supported Entities
 
-| Type    | Description                                                        |
-|---------|--------------------------------------------------------------------|
-| climate | Control air conditioners (cooling, heating, dry)                   |
-| light   | Control lights (on/off, mode selection)                            |
-| sensor  | Temperature, humidity, illuminance, motion, power (buy/sell)      |
-| remote  | Send infrared signals defined as "signals" for IR/AC/LIGHT types  |
+| Type          | Description                                                        |
+|---------------|--------------------------------------------------------------------|
+| climate       | Control air conditioners (cooling, heating, dry, fan-only, auto, eco preset) |
+| light         | Control lights (on/off, mode selection, effects)                   |
+| sensor        | Temperature, humidity, illuminance, pressure, power (buy/sell/instant), motion timestamp |
+| remote        | Send infrared signals or turn on/off for IR/AC/LIGHT types        |
+| switch        | On/off toggle for appliances with power signals                    |
+| binary_sensor | Motion detection with configurable timeout                         |
+| event         | Motion detected events for automations                             |
+| button        | Learn IR signal, refresh data                                      |
+| select        | Light mode and AC preset selectors                                 |
+| diagnostics   | Download diagnostic information                                    |
 
 *Additional entities may be supported in future updates.*
 
@@ -106,7 +128,7 @@ data:
 
 ## External Temperature and Humidity Sensors
 
-You can now configure external temperature and humidity sensors for each device.
+You can configure external temperature and humidity sensors for each device.
 
 By selecting entities from Home Assistant settings, the climate device will use the specified sensors instead of the default values provided by Nature Remo.
 
@@ -120,7 +142,8 @@ By selecting entities from Home Assistant settings, the climate device will use 
 Once configured, the selected external sensors will be used for:
 
 - Displaying temperature and humidity in the climate entity
-- Providing more accurate environmental data for air conditioner control
+
+Note: These values are used for display only. Climate control commands are still sent to the Nature Remo API using the device's own readings.
 
 ### Notes
 
@@ -129,11 +152,57 @@ Once configured, the selected external sensors will be used for:
 
 ---
 
-## Author
+## Custom Services
 
-- Author: [@nanosns](https://github.com/nanosns) (NaNaRin)
-- Project: [@NaNaLinks](https://github.com/NaNaLinks)
-- Socials: [note](https://note.com/nanomana)
+The integration provides the following custom services under the `nature_remo` domain:
+
+| Service                | Description                                    |
+|------------------------|------------------------------------------------|
+| `send_light_mode`      | Send a specific mode command to a light entity |
+| `learn_signal`         | Start learning an infrared signal              |
+
+---
+
+## Development & Contributing
+
+Contributions, bug reports, and feature requests are welcome!
+
+1. Fork this repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'feat: Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+Please open an issue first for significant changes or new features to discuss the approach.
+
+---
+
+## Troubleshooting
+
+### Authentication Error
+- Verify your API key is correct at [Nature Official Site](https://home.nature.global)
+- Ensure the token has not expired
+
+### Entity Not Appearing
+- Check that your appliances are properly registered in the Nature Remo app
+- Verify the integration has been reloaded after configuration changes
+
+### Rate Limit Errors
+- Nature Remo Cloud API has rate limits
+- Try increasing the update interval in the integration options
+- Avoid excessive manual refreshes
+
+### Local IP Connection Issues
+- Local API uses unencrypted HTTP communication
+- Ensure your Home Assistant and Nature Remo device are on the same network
+- The local IP option is only for IR signal sending; data fetching always uses the cloud API
+
+---
+
+## Authors
+
+- Original author: [@nanosns](https://github.com/nanosns) (NaNaRin) — [NaNaLinks](https://github.com/NaNaLinks)
+- Fork maintainer: [@tamatyan99](https://github.com/tamatyan99)
 
 ---
 

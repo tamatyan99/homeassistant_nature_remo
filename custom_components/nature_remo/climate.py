@@ -1,54 +1,68 @@
 import logging
-import voluptuous as vol
+from collections.abc import Callable
+
+from aiohttp import ClientError
 from homeassistant.components.climate import (
+    PRESET_NONE,
     ClimateEntity,
     ClimateEntityFeature,
     HVACMode,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers import config_validation as cv
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
+from .api import NatureRemoAuthError
+from .const import DOMAIN, HA_MODE_TO_REMO_MODE, REMO_MODE_TO_HA_MODE
 from .coordinator import NatureRemoCoordinator
-from .const import DOMAIN
+from .entity import get_device_info
 
 _LOGGER = logging.getLogger(__name__)
 
-CONF_TOKEN = "token"
-CONF_NAME = "name"
-CONF_DEVICE_ID = "device_id"
-CONF_APPLIANCE_ID = "appliance_id"
+TEMPERATURE_UNIT_CELSIUS = "c"
 
-MODE_MAP = {
-    HVACMode.COOL: "cool",
-    HVACMode.HEAT: "warm",
-    HVACMode.DRY: "dry",
-    HVACMode.FAN_ONLY: "blow",
-    HVACMode.AUTO: "auto",
-}
 
-PLATFORM_SCHEMA = vol.Schema(
-    {
-        vol.Required(CONF_TOKEN): cv.string,
-        vol.Required(CONF_NAME): cv.string,
-        vol.Required(CONF_DEVICE_ID): cv.string,
-        vol.Required(CONF_APPLIANCE_ID): cv.string,
-    }
-)
+def _build_climate_payload(**kwargs) -> dict:
+    """Build a climate command payload, always including the temperature unit."""
+    payload = dict(kwargs)
+    payload.setdefault("temperature_unit", TEMPERATURE_UNIT_CELSIUS)
+    return payload
+
+
+def _format_temperature(value: float) -> str:
+    try:
+        if float(value).is_integer():
+            return str(int(value))
+    except (TypeError, ValueError):
+        pass
+    return str(value)
+
+
+def _build_ac_preset_payload(
+    preset_mode: str,
+    hvac_mode: HVACMode,
+    target_temperature: str,
+) -> dict:
+    """Build the AC preset payload."""
+    if preset_mode == "eco":
+        return _build_climate_payload(button="eco", temperature="26")
+    operation_mode = HA_MODE_TO_REMO_MODE.get(hvac_mode.value)
+    if operation_mode is None:
+        raise HomeAssistantError(f"Invalid HVAC mode: {hvac_mode}")
+    return _build_climate_payload(
+        operation_mode=operation_mode,
+        temperature=target_temperature,
+    )
 
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ):
-    """
-    UI設定からエアコンエンティティを追加.
-    Add air conditioner entity from UI configuration.
-    """
-    _LOGGER.info("Nature Remo Climate: async_setup_entry called!")
-    _LOGGER.debug(f"★[Climate]{hass.data[DOMAIN][entry.entry_id]}")
-    _LOGGER.debug(f"config_entry.options: {entry.options}")
+    _LOGGER.debug("Nature Remo Climate: async_setup_entry called")
 
     data = hass.data[DOMAIN][entry.entry_id]
     coordinator: NatureRemoCoordinator = data["coordinator"]
@@ -57,13 +71,12 @@ async def async_setup_entry(
     entities = []
 
     for appliance in coordinator.aircons.values():
-
         entity = NatureRemoClimate(
             coordinator=coordinator,
             appliance=appliance,
             device=appliance["device"],
             api=api,
-            entry_id=entry.entry_id,  # [Issue#4] entry_idのみ保持してoptionsにアクセスする
+            entry_id=entry.entry_id,
         )
         entities.append(entity)
 
@@ -73,11 +86,9 @@ async def async_setup_entry(
     async_add_entities(entities, True)
 
 
-class NatureRemoClimate(ClimateEntity):
-    """
-    Nature Remoでエアコンを操作するエンティティ.
-    Entity to control an air conditioner via Nature Remo.
-    """
+class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity):
+    _attr_has_entity_name = True
+    _attr_should_poll = False
 
     def __init__(
         self,
@@ -85,69 +96,104 @@ class NatureRemoClimate(ClimateEntity):
         appliance,
         device,
         api,
-        entry_id: str = None,  # [Issue#4] entry_idのみ受け取る（hassはself.hassで参照）
+        entry_id: str | None = None,
     ) -> None:
-        """エアコンの初期設定. / Initialize air conditioner settings."""
-        _LOGGER.debug(f'[{appliance["name"]}]Start __init__')
-        try:
-            self._attr_unique_id = f"nature_remo_climate_{appliance['appliance_id']}"
-            self._attr_name = f"Nature Remo {appliance['name']}"
-            self._coordinator = coordinator
-            self._appliance = appliance
-            self._device = device
-            self._appliance_id = appliance["appliance_id"]
-            self._temperature = None
-            self._humidity = None
-            self._hvac_modes = [HVACMode.OFF]
-            self._hvac_mode = HVACMode.OFF
-            self._button = "power-off"
-            self._api = api
-            self._target_temperature = 25
-            self._fan_mode = "auto"
-            self._swing_mode = "auto"
-            self._aircon_range_modes = {}
-
-            # [Issue#4] entry_idを保持（optionsはself.hassから都度取得する）
-            # self.hassはasync_added_to_hass()以降にHAフレームワークが自動セットする
-            self._entry_id = entry_id
-
-        except Exception as e:
-            _LOGGER.error(f"Error initializing NatureRemoClimate: {e}")
+        super().__init__(coordinator)
+        self._attr_unique_id = f"nature_remo_climate_{appliance['appliance_id']}"
+        self._attr_name = None
+        self._appliance = appliance
+        self._device = device
+        self._appliance_id = appliance["appliance_id"]
+        self._temperature = None
+        self._humidity = None
+        self._hvac_modes = [HVACMode.OFF]
+        self._hvac_mode = HVACMode.OFF
+        self._button = "power-off"
+        self._api = api
+        self._target_temperature = 25
+        self._fan_mode = "auto"
+        self._swing_mode = "auto"
+        self._swing_horizontal_mode = "auto"
+        self._aircon_range_modes = {}
+        self._entry_id = entry_id
+        self._preset_mode = PRESET_NONE
 
     @property
     def device_info(self):
-        return {
-            "identifiers": {(DOMAIN, self._device["device_id"])},
-            "name": self._device["name"],
-            "manufacturer": "Nature",
-            "model": self._device.get("firmware_version", "Nature Remo"),
-        }
+        return get_device_info(self._device)
 
     @property
-    def supported_features(self) -> int:
-        """対応している機能を定義. / Define the features supported by this entity."""
-        _LOGGER.debug(f"[{self._attr_name}] Start supported_features")
-        support_feature = ClimateEntityFeature(0)
-        if self.min_temp != 0.0 and self.max_temp != 0.0:
-            support_feature = support_feature | ClimateEntityFeature.TARGET_TEMPERATURE
-        if self.fan_modes:
-            support_feature = support_feature | ClimateEntityFeature.FAN_MODE
-        if self.swing_modes:
-            support_feature = support_feature | ClimateEntityFeature.SWING_MODE
+    def preset_modes(self) -> list[str] | None:
+        return [PRESET_NONE, "eco"]
 
-        _LOGGER.info(f"Nature Remo Climate support_feature: {support_feature}")
-        return support_feature
+    @property
+    def preset_mode(self) -> str | None:
+        return self._preset_mode
+
+    async def _apply_climate_command(
+        self,
+        payload: dict,
+        *,
+        state_updates: dict,
+        rollback: dict,
+        post_success: Callable | None = None,
+    ) -> dict:
+        """Send a climate command and apply optimistic updates with rollback on network error."""
+        previous = {name: getattr(self, name) for name in rollback}
+        try:
+            response = await self._api.send_command_climate(payload, self._appliance_id)
+            try:
+                for name, value in state_updates.items():
+                    setattr(self, name, value)
+                if post_success is not None:
+                    post_success(response)
+                return response
+            except Exception:
+                for name, value in previous.items():
+                    setattr(self, name, value)
+                self.async_write_ha_state()
+                raise
+        except NatureRemoAuthError as err:
+            raise ConfigEntryAuthFailed(f"Authentication failed: {err}") from err
+        except ClientError:
+            for name, value in previous.items():
+                setattr(self, name, value)
+            self.async_write_ha_state()
+            raise
+
+    async def async_set_preset_mode(self, preset_mode: str) -> None:
+        if preset_mode not in self.preset_modes:
+            raise HomeAssistantError(f"Invalid preset mode: {preset_mode}")
+        target_temp = 26 if preset_mode == "eco" else self._target_temperature
+        payload = _build_ac_preset_payload(
+            preset_mode,
+            self._hvac_mode,
+            _format_temperature(target_temp),
+        )
+
+        def _post_success(response):
+            self._preset_mode = preset_mode if preset_mode == "eco" else PRESET_NONE
+            self._target_temperature = target_temp
+            self._button = ""
+            self._update_from_response(response)
+
+        await self._apply_climate_command(
+            payload,
+            state_updates={},
+            rollback={
+                "_preset_mode": self._preset_mode,
+                "_target_temperature": self._target_temperature,
+                "_button": self._button,
+            },
+            post_success=_post_success,
+        )
+        self.async_write_ha_state()
 
     @property
     def target_temperature_step(self) -> float:
-        """温度変更の刻み幅を設定. / Set the step size for temperature adjustment."""
-        _LOGGER.debug(f"[{self._attr_name}] Start target_temperature_step")
-        remo_mode = MODE_MAP.get(self._hvac_mode)
-        temp_list = self._aircon_range_modes.get(remo_mode, {}).get("temp", [])
-        temp_list = list(map(float, filter(None, temp_list)))
-
+        temp_list = self._get_temp_list()
         if not temp_list:
-            return 0.0
+            return 1.0
 
         differences = [
             temp_list[i + 1] - temp_list[i] for i in range(len(temp_list) - 1)
@@ -156,121 +202,93 @@ class NatureRemoClimate(ClimateEntity):
         step = 1.0
         if len(set(differences)) == 1:
             step = differences[0]
-        _LOGGER.debug(f"target_temperature_step: {step}")
         return step
 
     @property
     def min_temp(self):
-        """設定可能な最低温度. / Return the minimum temperature that can be set."""
-        _LOGGER.debug(f"[{self._attr_name}] Start min_temp")
-        remo_mode = MODE_MAP.get(self._hvac_mode)
-        temp_list = self._aircon_range_modes.get(remo_mode, {}).get("temp", [])
-        temp_list = list(map(float, filter(None, temp_list)))
+        temp_list = self._get_temp_list()
         if not temp_list:
-            return 0.0
-
-        _LOGGER.debug(f"min_temp: {min(temp_list)}")
+            return 16.0
         return min(temp_list)
 
     @property
     def max_temp(self):
-        """設定可能な最高温度. / Return the maximum temperature that can be set."""
-        remo_mode = MODE_MAP.get(self._hvac_mode)
-        temp_list = self._aircon_range_modes.get(remo_mode, {}).get("temp", [])
-        temp_list = list(map(float, filter(None, temp_list)))
+        temp_list = self._get_temp_list()
         if not temp_list:
-            return 0.0
-
-        _LOGGER.debug(f"max_temp: {max(temp_list)}")
+            return 30.0
         return max(temp_list)
 
     @property
     def current_temperature(self) -> float | None:
-        """現在の室温を返す / Return the current room temperature."""
         return self._temperature
 
     @property
     def current_humidity(self) -> int | None:
-        """現在の湿度を返す / Return the current room humidity."""
         return self._humidity
 
     @property
-    def name(self):
-        """エアコンの表示名を返す. / Return the display name of the air conditioner."""
-        return self._attr_name
-
-    @property
     def temperature_unit(self) -> str:
-        """温度の単位を取得. / Get the temperature unit used by the device."""
         return UnitOfTemperature.CELSIUS
 
     @property
     def hvac_mode(self):
-        """現在の動作モード. / Current operation mode of the air conditioner."""
         if self._button == "power-off":
             return HVACMode.OFF
         return self._hvac_mode
 
     @property
     def hvac_modes(self):
-        """サポートするモード. / List of supported HVAC modes."""
         return self._hvac_modes
 
     @property
     def fan_modes(self) -> list[str] | None:
-        """設定可能な風量のリスト. / List of available fan modes."""
-        remo_mode = MODE_MAP.get(self._hvac_mode)
+        remo_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
         return self._aircon_range_modes.get(remo_mode, {}).get("vol", [])
 
     @property
     def swing_modes(self) -> list[str] | None:
-        """設定可能な風向きのリスト. / List of available swing modes."""
-        remo_mode = MODE_MAP.get(self._hvac_mode)
+        remo_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
         return self._aircon_range_modes.get(remo_mode, {}).get("dir", [])
 
     @property
     def target_temperature(self) -> float | None:
-        """現在の目標温度を取得. / Get the current target temperature."""
         return self._target_temperature
 
     @property
     def fan_mode(self) -> str | None:
-        """現在の風量を返す. / Return the current fan mode."""
         return self._fan_mode
 
     @property
     def swing_mode(self) -> str | None:
-        """現在の風向きを返す. / Return the current swing mode."""
         return self._swing_mode
 
+    @property
+    def swing_horizontal_modes(self) -> list[str] | None:
+        remo_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
+        return self._aircon_range_modes.get(remo_mode, {}).get("dirh", [])
+
+    @property
+    def swing_horizontal_mode(self) -> str | None:
+        return self._swing_horizontal_mode
+
+    def _get_temp_list(self) -> list[float]:
+        """Return parsed temperature list for current HVAC mode."""
+        remo_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
+        temp_list = self._aircon_range_modes.get(remo_mode, {}).get("temp", [])
+        try:
+            temp_list = list(map(float, filter(None, temp_list)))
+        except (ValueError, TypeError):
+            return []
+        return temp_list
+
     def _get_external_sensor_value(self, sensor_type: str) -> float | None:
-        """
-        [Issue#4] 外部センサーエンティティから値を取得する.
-        Get value from external sensor entity if configured.
-
-        Args:
-            sensor_type: "temperature" または "humidity"
-        Returns:
-            外部センサーの値（未設定またはエラー時はNone）
-
-        Note:
-            self.hassはHAフレームワークがasync_added_to_hass()以降に自動セットする。
-            __init__時点ではNoneのため、このメソッドはasync_added_to_hass()以降に呼ぶこと。
-        """
-        # [Issue#4] self.hassはHAフレームワークが自動セットするプロパティを使用
         if self.hass is None or self._entry_id is None:
-            _LOGGER.debug(
-                f"[{self._attr_name}] [{sensor_type}] self.hass={self.hass}, "
-                f"self._entry_id={self._entry_id} → スキップ / skipped"
-            )
             return None
 
-        # [Issue#4] config_entriesからoptionsを都度取得（最新の設定を参照できる）
         entry = self.hass.config_entries.async_get_entry(self._entry_id)
         if entry is None:
             _LOGGER.warning(
-                f"[{self._attr_name}] entry_id '{self._entry_id}' のConfigEntryが見つかりません。"
-                f" / ConfigEntry not found for entry_id '{self._entry_id}'."
+                "ConfigEntry not found for entry_id '%s'.", self._entry_id
             )
             return None
 
@@ -279,164 +297,150 @@ class NatureRemoClimate(ClimateEntity):
         entity_id = entry.options.get(option_key)
 
         _LOGGER.debug(
-            f"[{self._attr_name}] [{sensor_type}] "
-            f"device_id='{device_id}' / "
-            f"option_key='{option_key}' / "
-            f"entity_id='{entity_id}' / "
-            f"options={entry.options}"
+            "[%s] [%s] device_id='%s', option_key='%s', entity_id='%s'",
+            self._attr_unique_id,
+            sensor_type,
+            device_id,
+            option_key,
+            entity_id,
         )
 
         if not entity_id:
-            _LOGGER.debug(
-                f"[{self._attr_name}] [{sensor_type}] "
-                f"外部センサー未設定のためNature Remoの値を使用 / "
-                f"No external sensor configured, using Nature Remo value"
-            )
             return None
 
         state = self.hass.states.get(entity_id)
         if state is None:
-            # 起動直後は外部センサーがまだロードされていない場合があるため DEBUG に格下げ
-            # Downgraded to DEBUG as sensor may not be loaded yet during startup
             _LOGGER.debug(
-                f"[{self._attr_name}] 外部{sensor_type}センサー '{entity_id}' の状態が取得できません。"
-                f"（起動直後の場合は一時的なものです）"
-                f" / External {sensor_type} sensor '{entity_id}' state not found."
-                f" (This may be temporary if HA has just started.)"
+                "External %s sensor '%s' state not found.", sensor_type, entity_id
             )
             return None
 
         try:
             value = float(state.state)
             _LOGGER.debug(
-                f"[{self._attr_name}] 外部{sensor_type}センサー '{entity_id}' から値を取得: {value}"
-                f" / Got {sensor_type} value {value} from external sensor '{entity_id}'"
+                "Got %s value %s from external sensor '%s'",
+                sensor_type,
+                value,
+                entity_id,
             )
             return value
         except (ValueError, TypeError):
             _LOGGER.warning(
-                f"[{self._attr_name}] 外部{sensor_type}センサー '{entity_id}' の値が無効です: {state.state}"
-                f" / Invalid {sensor_type} value from external sensor '{entity_id}': {state.state}"
+                "Invalid %s value from external sensor '%s': %s",
+                sensor_type,
+                entity_id,
+                state.state,
             )
             return None
 
-    def update_status(self) -> None:
-        """
-        コーディネーターで取得した値に更新する.
-        Update values using the data from the coordinator.
-        """
-        _LOGGER.debug(f"[{self._attr_name}] Start update_status.")
-        appliance = self._coordinator.data.get(self._appliance_id, {})
-
-        # [Issue#4] 外部温度センサーが設定されていればそちらを優先して使用する
-        # If external temperature sensor is configured, use it preferentially
+    def _update_external_sensors(self) -> None:
         external_temperature = self._get_external_sensor_value("temperature")
         if external_temperature is not None:
             self._temperature = external_temperature
-            _LOGGER.debug(
-                f"[{self._attr_name}] 外部温度センサーから室温を取得: {self._temperature}℃"
-                f" / Using external temperature sensor: {self._temperature}℃"
-            )
 
-        # [Issue#4] 外部湿度センサーが設定されていればそちらを優先して使用する
-        # If external humidity sensor is configured, use it preferentially
         external_humidity = self._get_external_sensor_value("humidity")
         if external_humidity is not None:
             self._humidity = external_humidity
-            _LOGGER.debug(
-                f"[{self._attr_name}] 外部湿度センサーから湿度を取得: {self._humidity}%"
-                f" / Using external humidity sensor: {self._humidity}%"
-            )
 
-        # 外部センサー未設定の場合はNature Remoデバイスの値を使用（従来通り）
-        # Fall back to Nature Remo device sensor if external sensors are not configured
+    def _update_device_events(self) -> None:
         device_id = self._device["device_id"]
-        device_data = self._coordinator.devices.get(device_id)  # KeyError対策でgetを使用
+        device_data = self.coordinator.devices.get(device_id)
         if device_data is None:
             _LOGGER.warning(
-                f"[{self._attr_name}] デバイス '{device_id}' がcoordinatorのdevicesに見つかりません。"
-                f" / Device '{device_id}' not found in coordinator devices."
+                "Device '%s' not found in coordinator devices.", device_id
             )
-        else:
-            device_events = device_data.get("events", {})
-            # 外部温度センサー未設定の場合のみNature Remoの値を使用
-            if external_temperature is None:
-                if "te" in device_events:
-                    self._temperature = device_events["te"].get("val")
-                    _LOGGER.debug(
-                        f"[{self._attr_name}] Nature Remoデバイスから室温を取得: {self._temperature}℃"
-                        f" / Using Nature Remo device temperature: {self._temperature}℃"
-                    )
-            # 外部湿度センサー未設定の場合のみNature Remoの値を使用
-            if external_humidity is None:
-                if "hu" in device_events:
-                    self._humidity = device_events["hu"].get("val")
-                    _LOGGER.debug(
-                        f"[{self._attr_name}] Nature Remoデバイスから湿度を取得: {self._humidity}%"
-                        f" / Using Nature Remo device humidity: {self._humidity}%"
-                    )
+            return
 
-        # settingsから取得できる情報
+        device_events = device_data.get("events", {})
+        if self._temperature is None and "te" in device_events:
+            self._temperature = device_events["te"].get("val")
+        if self._humidity is None and "hu" in device_events:
+            self._humidity = device_events["hu"].get("val")
+
+    def _update_aircon_state(self, appliance: dict) -> None:
         if appliance and "settings" in appliance:
-            _LOGGER.info("***Nature Remo Settings: %s", appliance["settings"])
-            # 動作モード
-            self._hvac_mode = self.get_remo_mode_to_hvac_mode(
+            hvac_mode = self.get_remo_mode_to_hvac_mode(
                 appliance["settings"].get("mode", "")
             )
-            # ボタン（OFFボタン）
+            if hvac_mode is not None:
+                self._hvac_mode = hvac_mode
+
             self._button = appliance["settings"].get("button", "")
+            self._preset_mode = "eco" if self._button == "eco" else PRESET_NONE
 
-            # 目標温度
             temp = appliance["settings"].get("temp", "20.0")
-            try:
-                self._target_temperature = float(temp)
-            except (ValueError, TypeError):
-                self._target_temperature = 0.0
+            if temp == "-":
+                self._target_temperature = None
+            else:
+                try:
+                    self._target_temperature = float(temp)
+                except (ValueError, TypeError):
+                    self._target_temperature = None
 
-            # 風量
             self._fan_mode = appliance["settings"].get("vol", "auto")
-            # 風向き
             self._swing_mode = appliance["settings"].get("dir", "auto")
+            self._swing_horizontal_mode = appliance["settings"].get("dirh", "auto")
 
-        # aircon_range_mode
         if appliance and "aircon" in appliance:
             self._aircon_range_modes = (
                 appliance["aircon"].get("range", {}).get("modes", {})
             )
             if self._aircon_range_modes:
                 set_range_modes = [HVACMode.OFF]
-                if self._aircon_range_modes.get("cool", {}):
+                if self._aircon_range_modes.get(HA_MODE_TO_REMO_MODE.get(HVACMode.COOL.value), {}):
                     set_range_modes.append(HVACMode.COOL)
-                if self._aircon_range_modes.get("dry", {}):
+                if self._aircon_range_modes.get(HA_MODE_TO_REMO_MODE.get(HVACMode.DRY.value), {}):
                     set_range_modes.append(HVACMode.DRY)
-                if self._aircon_range_modes.get("warm", {}):
+                if self._aircon_range_modes.get(HA_MODE_TO_REMO_MODE.get(HVACMode.HEAT.value), {}):
                     set_range_modes.append(HVACMode.HEAT)
-                if self._aircon_range_modes.get("blow", {}):
+                if self._aircon_range_modes.get(HA_MODE_TO_REMO_MODE.get(HVACMode.FAN_ONLY.value), {}):
                     set_range_modes.append(HVACMode.FAN_ONLY)
-                if self._aircon_range_modes.get("auto", {}):
+                if self._aircon_range_modes.get(HA_MODE_TO_REMO_MODE.get(HVACMode.AUTO.value), {}):
                     set_range_modes.append(HVACMode.AUTO)
                 self._hvac_modes = set_range_modes
 
-        # イベントループ外（別スレッド）からも呼ばれる可能性があるため
-        # schedule_update_ha_state()を使用する（スレッドセーフ）
-        # async_write_ha_state() is not thread-safe; use schedule_update_ha_state() instead
-        self.schedule_update_ha_state()
+            features = (
+                ClimateEntityFeature.TURN_ON
+                | ClimateEntityFeature.TURN_OFF
+                | ClimateEntityFeature.PRESET_MODE
+            )
+            if any(m.get("temp") for m in self._aircon_range_modes.values()):
+                features |= ClimateEntityFeature.TARGET_TEMPERATURE
+            if any(m.get("vol") for m in self._aircon_range_modes.values()):
+                features |= ClimateEntityFeature.FAN_MODE
+            if any(m.get("dir") for m in self._aircon_range_modes.values()):
+                features |= ClimateEntityFeature.SWING_MODE
+            if any(m.get("dirh") for m in self._aircon_range_modes.values()):
+                features |= ClimateEntityFeature.SWING_HORIZONTAL_MODE
+            self._attr_supported_features = features
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        _LOGGER.debug("[%s] Start _handle_coordinator_update.", self._attr_unique_id)
+        if self.coordinator.data is None:
+            _LOGGER.debug("[%s] Coordinator data is None, skipping update.", self._attr_unique_id)
+            return
+        appliance = self.coordinator.data.get(self._appliance_id, {})
+
+        # Reset external sensor values so unavailable sensors fall back to device events
+        self._temperature = None
+        self._humidity = None
+        self._update_external_sensors()
+        self._update_device_events()
+        self._update_aircon_state(appliance)
+
+        self.async_write_ha_state()
 
     def get_remo_mode_to_hvac_mode(self, remo_mode) -> HVACMode | None:
-        """
-        Nature Remoの動作モードをHomeAssistantの動作モードに変換する.
-        Convert Nature Remo operation mode to Home Assistant HVAC mode.
-        """
-        return next(
-            (key for key, value in MODE_MAP.items() if value == remo_mode),
-            None,
-        )
+        ha_mode_str = REMO_MODE_TO_HA_MODE.get(remo_mode)
+        if ha_mode_str is None:
+            return None
+        try:
+            return HVACMode(ha_mode_str)
+        except ValueError:
+            return None
 
     def _get_external_sensor_entity_ids(self) -> list[str]:
-        """
-        [Issue#4 案B] 設定されている外部センサーのエンティティIDリストを返す.
-        Return a list of configured external sensor entity IDs.
-        """
         if self.hass is None or self._entry_id is None:
             return []
 
@@ -455,49 +459,29 @@ class NatureRemoClimate(ClimateEntity):
 
         return entity_ids
 
-    def _on_external_sensor_state_changed(self, event) -> None:
-        """
-        [Issue#4 案B] 外部センサーの状態変化を検知したらupdate_statusを呼ぶ.
-        Called when an external sensor state changes; triggers update_status.
-        """
+    async def _on_external_sensor_state_changed(self, event) -> None:
         entity_id = event.data.get("entity_id")
         new_state = event.data.get("new_state")
 
         if new_state is None:
             _LOGGER.debug(
-                f"[{self._attr_name}] 外部センサー '{entity_id}' の新しい状態がNullです。スキップ。"
-                f" / New state of external sensor '{entity_id}' is None. Skipping."
+                "External sensor '%s' new state is None. Skipping.", entity_id
             )
             return
 
         _LOGGER.debug(
-            f"[{self._attr_name}] 外部センサー '{entity_id}' の状態が変化: {new_state.state}"
-            f" / External sensor '{entity_id}' state changed: {new_state.state}"
+            "External sensor '%s' state changed: %s", entity_id, new_state.state
         )
-        self.update_status()
+        self._handle_coordinator_update()
 
     async def async_added_to_hass(self):
-        """
-        エンティティがHome Assistantに追加されたら更新をトリガー.
-        Trigger update when the entity is added to Home Assistant.
+        _LOGGER.debug("[%s] async_added_to_hass: Climate entity complete setup", self._attr_unique_id)
+        await super().async_added_to_hass()
 
-        Note:
-            このメソッドが呼ばれた時点でself.hassがHAフレームワークによりセットされる。
-            そのため_get_external_sensor_value()はここ以降で正しく動作する。
-        """
-        _LOGGER.info(
-            f"[{self._attr_name}] async_added_to_hass: Climate entity complete setup"
-        )
-        # coordinatorの更新リスナー登録
-        self.async_on_remove(self._coordinator.async_add_listener(self.update_status))
-
-        # [Issue#4 案B] 外部センサーの状態変化を監視するリスナーを登録
-        # Register state change listeners for external sensors
         external_entity_ids = self._get_external_sensor_entity_ids()
         if external_entity_ids:
             _LOGGER.debug(
-                f"[{self._attr_name}] 外部センサーの状態変化監視を登録: {external_entity_ids}"
-                f" / Registering state change listeners for: {external_entity_ids}"
+                "Registering state change listeners for: %s", external_entity_ids
             )
             self.async_on_remove(
                 async_track_state_change_event(
@@ -507,100 +491,154 @@ class NatureRemoClimate(ClimateEntity):
                 )
             )
 
-        self.update_status()
-        self.async_write_ha_state()
+        self._handle_coordinator_update()
 
     async def async_set_hvac_mode(self, hvac_mode):
-        """エアコンのモードを変更. / Change the operation mode of the air conditioner."""
         _LOGGER.info("Setting HVAC mode: %s", hvac_mode)
         if hvac_mode not in self.hvac_modes:
-            _LOGGER.warning("Unsupported HVAC mode: %s", hvac_mode)
-            return
+            raise HomeAssistantError(f"Unsupported HVAC mode: {hvac_mode}")
 
         if hvac_mode == HVACMode.OFF:
-            payload = {"button": "power-off"}
-            self._button = "power-off"
+            payload = _build_climate_payload(button="power-off")
         else:
-            operation_mode = MODE_MAP.get(hvac_mode)
-            payload = {"operation_mode": operation_mode}
+            operation_mode = HA_MODE_TO_REMO_MODE.get(hvac_mode.value)
+            payload = _build_climate_payload(
+                operation_mode=operation_mode,
+                temperature=self.format_temperature(self._target_temperature),
+            )
+
+        def _post_success(response):
+            self._preset_mode = PRESET_NONE
             self._button = ""
-            self._hvac_mode = hvac_mode
+            self._update_from_response(response)
+            if hvac_mode == HVACMode.OFF:
+                self._button = "power-off"
+            elif self._button == "power-off":
+                self._button = ""
 
-        response = await self._api.send_command_climate(payload, self._appliance_id)
-        _LOGGER.info("Set HVACMode: %s", response)
-        self._hvac_mode = self.get_remo_mode_to_hvac_mode(response.get("mode", ""))
-        if self._hvac_mode is HVACMode.FAN_ONLY:
-            temp = "0.0"
-        else:
-            temp = response.get("temp", "25.0")
-        self._target_temperature = float(temp)
-        self._fan_mode = response.get("vol", "auto")
-        self._swing_mode = response.get("dir", "auto")
-        self._button = response.get("button", "")
-
+        await self._apply_climate_command(
+            payload,
+            state_updates={},
+            rollback={"_button": self._button, "_hvac_mode": self._hvac_mode},
+            post_success=_post_success,
+        )
         self.async_write_ha_state()
 
     async def async_set_temperature(self, **kwargs):
-        """エアコンの温度を変更. / Change the temperature setting of the air conditioner."""
         temperature = kwargs.get(ATTR_TEMPERATURE)
         if temperature is None:
-            _LOGGER.warning("温度が指定されていません！")
-            return
+            raise HomeAssistantError("Temperature not specified")
 
-        operation_mode = MODE_MAP.get(self._hvac_mode)
+        operation_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
         if operation_mode is None:
-            _LOGGER.error("Invalid HVAC mode: %s", self._hvac_mode)
-            return
+            raise HomeAssistantError(f"Invalid HVAC mode: {self._hvac_mode}")
 
         _LOGGER.debug("Setting temperature to: %s", temperature)
 
         set_temperature = self.format_temperature(temperature)
-        payload = {
-            "operation_mode": operation_mode,
-            "temperature": set_temperature,
-        }
+        payload = _build_climate_payload(
+            operation_mode=operation_mode,
+            temperature=set_temperature,
+        )
 
-        await self._api.send_command_climate(payload, self._appliance_id)
-        self._target_temperature = temperature
-        self._button = ""
+        await self._apply_climate_command(
+            payload,
+            state_updates={"_target_temperature": temperature, "_button": ""},
+            rollback={"_target_temperature": self._target_temperature, "_button": self._button},
+        )
         self.async_write_ha_state()
 
-    def format_temperature(self, value: float) -> str:
-        if value.is_integer():
-            return str(int(value))
+    def _update_from_response(self, response: dict) -> None:
+        """Update entity state from API response."""
+        if not isinstance(response, dict):
+            _LOGGER.warning("Unexpected response type: %s", type(response))
+            return
+        hvac_mode_result = self.get_remo_mode_to_hvac_mode(response.get("mode", ""))
+        if hvac_mode_result is not None:
+            self._hvac_mode = hvac_mode_result
+        if self._hvac_mode == HVACMode.FAN_ONLY:
+            self._target_temperature = None
         else:
-            return str(value)
+            temp = response.get("temp", "25.0")
+            try:
+                self._target_temperature = float(temp)
+            except (ValueError, TypeError):
+                _LOGGER.warning("Failed to parse temperature from response: %s", temp)
+                self._target_temperature = None
+        self._fan_mode = response.get("vol", self._fan_mode)
+        self._swing_mode = response.get("dir", self._swing_mode)
+        self._swing_horizontal_mode = response.get("dirh", self._swing_horizontal_mode)
+        self._button = response.get("button", "")
+
+    def format_temperature(self, value: float) -> str:
+        return _format_temperature(value)
 
     async def async_set_fan_mode(self, fan_mode: str) -> None:
-        """風量を変更. / Change the fan mode."""
-        operation_mode = MODE_MAP.get(self._hvac_mode)
+        operation_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
         if operation_mode is None:
-            _LOGGER.error("Invalid HVAC mode: %s", self._hvac_mode)
-            return
+            raise HomeAssistantError(f"Invalid HVAC mode: {self._hvac_mode}")
 
-        payload = {
-            "operation_mode": operation_mode,
-            "air_volume": fan_mode,
-        }
+        payload = _build_climate_payload(
+            operation_mode=operation_mode,
+            air_volume=fan_mode,
+        )
 
-        await self._api.send_command_climate(payload, self._appliance_id)
-        self._fan_mode = fan_mode
-        self._button = ""
+        await self._apply_climate_command(
+            payload,
+            state_updates={"_fan_mode": fan_mode, "_button": ""},
+            rollback={"_fan_mode": self._fan_mode, "_button": self._button},
+        )
         self.async_write_ha_state()
 
     async def async_set_swing_mode(self, swing_mode: str) -> None:
-        """風向きを変更. / Change the swing mode."""
-        operation_mode = MODE_MAP.get(self._hvac_mode)
+        operation_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
         if operation_mode is None:
-            _LOGGER.error("Invalid HVAC mode: %s", self._hvac_mode)
-            return
+            raise HomeAssistantError(f"Invalid HVAC mode: {self._hvac_mode}")
 
-        payload = {
-            "operation_mode": operation_mode,
-            "air_direction": swing_mode,
-        }
+        payload = _build_climate_payload(
+            operation_mode=operation_mode,
+            air_direction=swing_mode,
+        )
 
-        await self._api.send_command_climate(payload, self._appliance_id)
-        self._swing_mode = swing_mode
-        self._button = ""
+        await self._apply_climate_command(
+            payload,
+            state_updates={"_swing_mode": swing_mode, "_button": ""},
+            rollback={"_swing_mode": self._swing_mode, "_button": self._button},
+        )
         self.async_write_ha_state()
+
+    async def async_set_swing_horizontal_mode(self, swing_horizontal_mode: str) -> None:
+        operation_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
+        if operation_mode is None:
+            raise HomeAssistantError(f"Invalid HVAC mode: {self._hvac_mode}")
+
+        payload = _build_climate_payload(
+            operation_mode=operation_mode,
+            air_direction_h=swing_horizontal_mode,
+        )
+
+        await self._apply_climate_command(
+            payload,
+            state_updates={"_swing_horizontal_mode": swing_horizontal_mode, "_button": ""},
+            rollback={"_swing_horizontal_mode": self._swing_horizontal_mode, "_button": self._button},
+        )
+        self.async_write_ha_state()
+
+    async def async_turn_on(self) -> None:
+        """Turn the climate device on."""
+        if self.hvac_mode != HVACMode.OFF:
+            return
+        # Default to COOL if available, otherwise first non-OFF mode
+        target_mode = HVACMode.COOL
+        if target_mode not in self.hvac_modes:
+            for mode in self.hvac_modes:
+                if mode != HVACMode.OFF:
+                    target_mode = mode
+                    break
+        if target_mode == HVACMode.OFF:
+            raise HomeAssistantError("No HVAC mode available to turn on")
+        await self.async_set_hvac_mode(target_mode)
+
+    async def async_turn_off(self) -> None:
+        """Turn the climate device off."""
+        await self.async_set_hvac_mode(HVACMode.OFF)
