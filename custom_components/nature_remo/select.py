@@ -85,10 +85,11 @@ class NatureRemoLightSelect(CoordinatorEntity[NatureRemoCoordinator], SelectEnti
         if self.coordinator.data is None:
             return
         appliance = self.coordinator.data.get(self._appliance_id, {})
-        if appliance and "light" in appliance:
-            effect_buttons = appliance["light"].get("buttons", [])
+        light_data = appliance.get("light") if appliance else None
+        if light_data:
+            effect_buttons = light_data.get("buttons", [])
             self._attr_options = [btn["name"] for btn in effect_buttons]
-            state = appliance["light"].get("state", {})
+            state = light_data.get("state", {})
             self._attr_current_option = state.get("last_button")
         self.async_write_ha_state()
 
@@ -140,8 +141,8 @@ class NatureRemoAcPresetSelect(CoordinatorEntity[NatureRemoCoordinator], SelectE
         if self.coordinator.data is None:
             return
         appliance = self.coordinator.data.get(self._appliance_id, {})
-        if appliance and "settings" in appliance:
-            settings = appliance["settings"]
+        settings = appliance.get("settings") if appliance else None
+        if settings:
             if settings.get("button") == "eco":
                 self._attr_current_option = "eco"
             else:

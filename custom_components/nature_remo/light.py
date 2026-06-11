@@ -108,18 +108,20 @@ class NatureRemoLight(CoordinatorEntity[NatureRemoCoordinator], LightEntity):
             return
         appliance = self.coordinator.data.get(self._appliance_id, {})
 
-        if appliance and "light" in appliance:
-            _LOGGER.debug("Nature Remo Settings: %s", appliance["light"])
+        if appliance:
+            light_data = appliance.get("light")
+            if light_data is not None:
+                _LOGGER.debug("Nature Remo Settings: %s", light_data)
 
-            state = appliance["light"].get("state", {})
-            self._is_on = state.get("power") == "on"
-            self._last_mode = state.get("last_button", "on")
+                state = light_data.get("state") or {}
+                self._is_on = state.get("power") == "on"
+                self._last_mode = state.get("last_button", "on")
 
-            effect_buttons = appliance["light"].get("buttons", [])
-            self._attr_effect_list = [btn["name"] for btn in effect_buttons]
-            _LOGGER.debug(
-                "[%s] Available buttons: %s", self._attr_name, self._attr_effect_list
-            )
+                effect_buttons = light_data.get("buttons") or []
+                self._attr_effect_list = [btn["name"] for btn in effect_buttons]
+                _LOGGER.debug(
+                    "[%s] Available buttons: %s", self._attr_name, self._attr_effect_list
+                )
 
         self.async_write_ha_state()
 

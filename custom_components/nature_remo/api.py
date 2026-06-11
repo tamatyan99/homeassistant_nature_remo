@@ -27,7 +27,7 @@ class NatureRemoAPI:
         self._local_ip = local_ip
         self._cloud_headers = {
             "Authorization": f"Bearer {token}",
-            "User-Agent": "HomeAssistant-NatureRemo/0.6.6",
+            "User-Agent": "HomeAssistant-NatureRemo/0.6.7",
         }
         self._local_headers = {"X-Requested-With": "homeassistant"}
         self._cloud_request_lock = asyncio.Lock()
@@ -324,7 +324,8 @@ class NatureRemoAPI:
     async def send_command_signal(self, signal_id: str) -> dict:
         path = f"/signals/{signal_id}/send"
         try:
-            result = await self._call_api("POST", path)
+            # Swagger specifies an EmptyObject body for this endpoint.
+            result = await self._call_api("POST", path, data={})
             return result
         except NatureRemoAuthError:
             raise

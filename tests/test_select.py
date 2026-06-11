@@ -184,3 +184,41 @@ async def test_select_light_mode_rolls_back_on_api_error(
     state = hass.states.get("select.living_room_mode")
     # Current option may be None initially from coordinator data
     assert state.state in ("unknown", "on")
+
+
+async def test_select_light_mode_handles_null_light(
+    hass: HomeAssistant, setup_integration, coordinator_data, mock_api
+):
+    """Test that light mode select handles null light data from API."""
+    new_appliances = [dict(a) for a in coordinator_data["appliances"]]
+    for app in new_appliances:
+        if app["id"] == "light-1":
+            app["light"] = None
+
+    await setup_integration(
+        devices=coordinator_data["devices"],
+        appliances=new_appliances,
+    )
+
+    state = hass.states.get("select.living_room_mode")
+    assert state is not None
+    assert state.attributes["options"] == []
+
+
+async def test_select_ac_preset_handles_null_settings(
+    hass: HomeAssistant, setup_integration, coordinator_data, mock_api
+):
+    """Test that AC preset select handles null settings data from API."""
+    new_appliances = [dict(a) for a in coordinator_data["appliances"]]
+    for app in new_appliances:
+        if app["id"] == "ac-1":
+            app["settings"] = None
+
+    await setup_integration(
+        devices=coordinator_data["devices"],
+        appliances=new_appliances,
+    )
+
+    state = hass.states.get("select.living_room_preset")
+    assert state is not None
+    assert state.state == "none"

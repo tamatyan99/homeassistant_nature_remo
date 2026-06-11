@@ -52,7 +52,9 @@ async def test_climate_entity_properties(
     assert ClimateEntityFeature.TARGET_TEMPERATURE in state.attributes["supported_features"]
     assert ClimateEntityFeature.FAN_MODE in state.attributes["supported_features"]
     assert ClimateEntityFeature.SWING_MODE in state.attributes["supported_features"]
+    assert ClimateEntityFeature.SWING_HORIZONTAL_MODE in state.attributes["supported_features"]
     assert ClimateEntityFeature.PRESET_MODE in state.attributes["supported_features"]
+    assert state.attributes["swing_horizontal_mode"] == "auto"
 
 
 async def test_climate_coordinator_update_changes_state(
@@ -302,7 +304,10 @@ async def test_climate_turn_off_calls_api(
 
     mock_api.send_command_climate.assert_awaited_once()
     call_args = mock_api.send_command_climate.await_args
-    assert call_args.args[0] == {"button": "power-off"}
+    assert call_args.args[0] == {
+        "button": "power-off",
+        "temperature_unit": "c",
+    }
 
     state = hass.states.get("climate.living_room")
     assert state.state == HVACMode.OFF
@@ -576,5 +581,67 @@ async def test_climate_set_swing_mode_raises_auth_error(
             "climate",
             "set_swing_mode",
             {ATTR_ENTITY_ID: "climate.living_room", "swing_mode": "auto"},
+            blocking=True,
+        )
+
+
+async def test_climate_set_swing_horizontal_mode_calls_api(
+    hass: HomeAssistant, setup_integration, coordinator_data, mock_api
+):
+    """Test setting swing horizontal mode calls the API."""
+    await setup_integration(
+        devices=coordinator_data["devices"],
+        appliances=coordinator_data["appliances"],
+    )
+
+    mock_api.send_command_climate = AsyncMock(
+        return_value={
+            "mode": "cool",
+            "temp": "25",
+            "vol": "auto",
+            "dir": "auto",
+            "dirh": "left",
+            "button": "",
+        }
+    )
+
+    await hass.services.async_call(
+        "climate",
+        "set_swing_horizontal_mode",
+        {ATTR_ENTITY_ID: "climate.living_room", "swing_horizontal_mode": "left"},
+        blocking=True,
+    )
+
+    mock_api.send_command_climate.assert_awaited_once()
+    call_args = mock_api.send_command_climate.await_args
+    assert call_args.args[0] == {
+        "operation_mode": "cool",
+        "air_direction_h": "left",
+        "temperature_unit": "c",
+    }
+    assert call_args.args[1] == "ac-1"
+
+    state = hass.states.get("climate.living_room")
+    assert state.attributes["swing_horizontal_mode"] == "left"
+
+
+async def test_climate_set_swing_horizontal_mode_raises_auth_error(
+    hass: HomeAssistant, setup_integration, coordinator_data, mock_api
+):
+    """Test auth error is propagated from set_swing_horizontal_mode."""
+    await setup_integration(
+        devices=coordinator_data["devices"],
+        appliances=coordinator_data["appliances"],
+    )
+
+    mock_api.send_command_climate = AsyncMock(
+        side_effect=NatureRemoAuthError("401")
+    )
+
+    with pytest.raises(ConfigEntryAuthFailed):
+        await hass.services.async_call(
+            "climate",
+            "set_swing_horizontal_mode",
+            {ATTR_ENTITY_ID: "climate.living_room", "swing_horizontal_mode": "left"},
             blocking=True,
         )

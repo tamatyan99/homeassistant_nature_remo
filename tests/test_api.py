@@ -238,11 +238,30 @@ class TestNatureRemoAPI:
         with pytest.raises(ClientError, match="Light command failed"):
             await api.send_light_command("app-1", "on")
 
+    async def test_send_command_signal_success(self, api):
+        mock_resp = _mock_response(status=200, json_data={"status": "ok"})
+        api._session.request = _mock_session_method(mock_resp)
+        result = await api.send_command_signal("sig-1")
+        assert result == {"status": "ok"}
+        api._session.request.assert_called_once()
+        call_args = api._session.request.call_args
+        assert call_args[1]["data"] == {}
+
     async def test_send_command_signal_failure(self, api):
         mock_resp = _mock_response(status=500, text="Internal Server Error")
         api._session.request = _mock_session_method(mock_resp)
         with pytest.raises(ClientError, match="Signal send failed"):
             await api.send_command_signal("sig-1")
+
+    async def test_send_command_climate_turn_off_includes_temperature_unit(self, api):
+        mock_resp = _mock_response(status=200, json_data={"button": "power-off"})
+        api._session.request = _mock_session_method(mock_resp)
+        payload = {"button": "power-off", "temperature_unit": "c"}
+        result = await api.send_command_climate(payload, "app-1")
+        assert result == {"button": "power-off"}
+        api._session.request.assert_called_once()
+        call_args = api._session.request.call_args
+        assert call_args[1]["data"] == payload
 
     async def test_learn_signal_failure(self, api):
         mock_resp = _mock_response(status=500, text="Internal Server Error")

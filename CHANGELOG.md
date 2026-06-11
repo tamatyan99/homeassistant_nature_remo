@@ -5,9 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.6.6] - 2026-06-10
+## [0.6.7] - 2026-06-10
 
 ### Fixed
+- **Swagger spec compliance** (`https://swagger.nature.global/`):
+  - Climate payloads now always include `temperature_unit` per the `AirConParams_` schema (previously missing on `turn_off`).
+  - Signal send (`POST /signals/{signalid}/send`) now explicitly sends an empty body `{}` matching the `EmptyObject` request body schema.
+  - Hardened null-safe handling for all nullable Swagger fields: `DeviceResponse.newest_events`, `ApplianceResponse.device`, `ApplianceResponse.light`, `ApplianceResponse.settings`, and `SmartMeterResponse.echonetlite_properties`.
+  - Fixed `light.py` crash when the API returns `null` for `light.state` or `light.buttons`.
 - **P0** `coordinator.py` no longer swallows `asyncio.CancelledError`; service handlers in `__init__.py` also re-raise it instead of converting it to a generic `HomeAssistantError`.
 - **P1** Authentication failures (`NatureRemoAuthError`) now consistently propagate as `ConfigEntryAuthFailed` in `switch`, `remote`, `button`, and `select` platforms, and in custom service handlers.
 - **P1** `switch` and `remote` now roll back optimistic state changes when the API call fails.

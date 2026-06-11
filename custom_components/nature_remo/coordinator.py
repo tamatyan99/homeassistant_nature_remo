@@ -54,7 +54,7 @@ class NatureRemoCoordinator(DataUpdateCoordinator):
                     _LOGGER.warning("Device without ID skipped")
                     continue
                 name = device.get("name", "Unnamed")
-                newest_events = device.get("newest_events", {})
+                newest_events = device.get("newest_events") or {}
                 serial_number = device.get("serial_number", "")
                 mac_address = device.get("mac_address", "")
 
@@ -116,16 +116,17 @@ class NatureRemoCoordinator(DataUpdateCoordinator):
                     _LOGGER.warning("Appliance without ID skipped")
                     continue
                 nickname = appliance.get("nickname", "Unnamed")
+                device_raw = appliance.get("device") or {}
                 device_info = {
-                    "name": appliance.get("device", {}).get("name", "No Name"),
-                    "device_id": appliance.get("device", {}).get("id", ""),
-                    "firmware_version": appliance.get("device", {}).get(
+                    "name": device_raw.get("name", "No Name"),
+                    "device_id": device_raw.get("id", ""),
+                    "firmware_version": device_raw.get(
                         "firmware_version", ""
                     ),
-                    "serial_number": appliance.get("device", {}).get(
+                    "serial_number": device_raw.get(
                         "serial_number", ""
                     ),
-                    "mac_address": appliance.get("device", {}).get(
+                    "mac_address": device_raw.get(
                         "mac_address", ""
                     ),
                 }
@@ -136,8 +137,9 @@ class NatureRemoCoordinator(DataUpdateCoordinator):
                 }
 
                 if appliance_type == "EL_SMART_METER":
-                    properties = appliance.get("smart_meter", {}).get(
-                        "echonetlite_properties", []
+                    properties = (
+                        appliance.get("smart_meter", {}).get("echonetlite_properties")
+                        or []
                     )
                     parsed = self.api.parse_smart_meter_properties(properties)
 

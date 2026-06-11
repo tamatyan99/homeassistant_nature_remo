@@ -191,3 +191,72 @@ class TestNatureRemoCoordinator:
         assert "dev-1" in coordinator.motion_sensors
         assert coordinator.motion_sensors["dev-1"]["is_active"] is False
         assert coordinator.motion_sensors["dev-1"]["name"] == "Sensor"
+
+    async def test_null_device_does_not_crash(self, hass, mock_api):
+        mock_api.get_devices = AsyncMock(return_value=[])
+        mock_api.get_appliances = AsyncMock(
+            return_value=[
+                {
+                    "id": "app-1",
+                    "type": "AC",
+                    "nickname": "AC",
+                    "device": None,
+                }
+            ]
+        )
+
+        coordinator = NatureRemoCoordinator(hass, mock_api, update_interval=60)
+        result = await coordinator._async_update_data()
+
+        assert "app-1" in result
+        assert coordinator.aircons["app-1"]["name"] == "AC"
+        assert coordinator.aircons["app-1"]["device"]["name"] == "No Name"
+
+    async def test_null_newest_events_does_not_crash(self, hass, mock_api):
+        mock_api.get_devices = AsyncMock(
+            return_value=[
+                {
+                    "id": "dev-1",
+                    "name": "Sensor",
+                    "newest_events": None,
+                    "firmware_version": "1.0",
+                    "serial_number": "SN001",
+                    "mac_address": "AA:BB:CC:DD:EE:FF",
+                }
+            ]
+        )
+        mock_api.get_appliances = AsyncMock(return_value=[])
+
+        coordinator = NatureRemoCoordinator(hass, mock_api, update_interval=60)
+        await coordinator._async_update_data()
+
+        assert "dev-1" in coordinator.devices
+        assert coordinator.devices["dev-1"]["events"] == {}
+        assert "dev-1" not in coordinator.motion_sensors
+
+    async def test_null_smart_meter_properties_does_not_crash(self, hass, mock_api):
+        mock_api.get_devices = AsyncMock(return_value=[])
+        mock_api.get_appliances = AsyncMock(
+            return_value=[
+                {
+                    "id": "app-1",
+                    "type": "EL_SMART_METER",
+                    "nickname": "Smart Meter",
+                    "device": {
+                        "id": "dev-1",
+                        "name": "Remo",
+                        "firmware_version": "1.0",
+                        "serial_number": "SN001",
+                        "mac_address": "AA:BB:CC:DD:EE:FF",
+                    },
+                    "smart_meter": {"echonetlite_properties": None},
+                }
+            ]
+        )
+
+        coordinator = NatureRemoCoordinator(hass, mock_api, update_interval=60)
+        await coordinator._async_update_data()
+
+        assert "app-1" in coordinator.smart_meters
+        mock_api.parse_smart_meter_properties.assert_called_once_with([])
+        assert coordinator.smart_meters["app-1"]["current_power"] == 0

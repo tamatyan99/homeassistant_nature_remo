@@ -109,6 +109,7 @@ def coordinator_data():
                     "temp": "25.0",
                     "vol": "auto",
                     "dir": "auto",
+                    "dirh": "auto",
                     "button": "",
                 },
                 "aircon": {
@@ -118,26 +119,31 @@ def coordinator_data():
                                 "temp": ["18", "25", "30"],
                                 "vol": ["1", "2", "3", "auto"],
                                 "dir": ["auto"],
+                                "dirh": ["auto", "left"],
                             },
                             "warm": {
                                 "temp": ["18", "25", "30"],
                                 "vol": ["1", "2", "3", "auto"],
                                 "dir": ["auto"],
+                                "dirh": ["auto", "left"],
                             },
                             "dry": {
                                 "temp": ["18", "25", "30"],
                                 "vol": ["1", "2", "3", "auto"],
                                 "dir": ["auto"],
+                                "dirh": ["auto", "left"],
                             },
                             "blow": {
                                 "temp": ["-"],
                                 "vol": ["1", "2", "3", "auto"],
                                 "dir": ["auto"],
+                                "dirh": ["auto", "left"],
                             },
                             "auto": {
                                 "temp": ["18", "25", "30"],
                                 "vol": ["1", "2", "3", "auto"],
                                 "dir": ["auto"],
+                                "dirh": ["auto", "left"],
                             },
                         }
                     }

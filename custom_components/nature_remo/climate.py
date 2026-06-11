@@ -30,8 +30,7 @@ TEMPERATURE_UNIT_CELSIUS = "c"
 def _build_climate_payload(**kwargs) -> dict:
     """Build a climate command payload, always including the temperature unit."""
     payload = dict(kwargs)
-    if "temperature" in payload or "operation_mode" in payload:
-        payload.setdefault("temperature_unit", TEMPERATURE_UNIT_CELSIUS)
+    payload.setdefault("temperature_unit", TEMPERATURE_UNIT_CELSIUS)
     return payload
 
 
@@ -110,6 +109,7 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
         self._target_temperature = 25
         self._fan_mode = "auto"
         self._swing_mode = "auto"
+        self._swing_horizontal_mode = "auto"
         self._aircon_range_modes = {}
         self._entry_id = entry_id
         self._preset_mode = PRESET_NONE
@@ -129,6 +129,10 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
             support_feature = support_feature | ClimateEntityFeature.FAN_MODE
         if self.swing_modes:
             support_feature = support_feature | ClimateEntityFeature.SWING_MODE
+        if self.swing_horizontal_modes:
+            support_feature = (
+                support_feature | ClimateEntityFeature.SWING_HORIZONTAL_MODE
+            )
         support_feature = support_feature | ClimateEntityFeature.PRESET_MODE
         return support_feature
 
@@ -273,6 +277,15 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
     def swing_mode(self) -> str | None:
         return self._swing_mode
 
+    @property
+    def swing_horizontal_modes(self) -> list[str] | None:
+        remo_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
+        return self._aircon_range_modes.get(remo_mode, {}).get("dirh", [])
+
+    @property
+    def swing_horizontal_mode(self) -> str | None:
+        return self._swing_horizontal_mode
+
     def _get_temp_list(self) -> list[float]:
         """Return parsed temperature list for current HVAC mode."""
         remo_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
@@ -378,6 +391,7 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
 
             self._fan_mode = appliance["settings"].get("vol", "auto")
             self._swing_mode = appliance["settings"].get("dir", "auto")
+            self._swing_horizontal_mode = appliance["settings"].get("dirh", "auto")
 
         if appliance and "aircon" in appliance:
             self._aircon_range_modes = (
@@ -544,6 +558,7 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
             self._target_temperature = float(temp)
         self._fan_mode = response.get("vol", self._fan_mode)
         self._swing_mode = response.get("dir", self._swing_mode)
+        self._swing_horizontal_mode = response.get("dirh", self._swing_horizontal_mode)
         self._button = response.get("button", "")
 
     def format_temperature(self, value: float) -> str:
@@ -585,6 +600,23 @@ class NatureRemoClimate(CoordinatorEntity[NatureRemoCoordinator], ClimateEntity)
             payload,
             state_updates={"_swing_mode": swing_mode, "_button": ""},
             rollback={"_swing_mode": self._swing_mode, "_button": self._button},
+        )
+        self.async_write_ha_state()
+
+    async def async_set_swing_horizontal_mode(self, swing_horizontal_mode: str) -> None:
+        operation_mode = HA_MODE_TO_REMO_MODE.get(self._hvac_mode.value)
+        if operation_mode is None:
+            raise HomeAssistantError(f"Invalid HVAC mode: {self._hvac_mode}")
+
+        payload = _build_climate_payload(
+            operation_mode=operation_mode,
+            air_direction_h=swing_horizontal_mode,
+        )
+
+        await self._apply_climate_command(
+            payload,
+            state_updates={"_swing_horizontal_mode": swing_horizontal_mode, "_button": ""},
+            rollback={"_swing_horizontal_mode": self._swing_horizontal_mode, "_button": self._button},
         )
         self.async_write_ha_state()
 
