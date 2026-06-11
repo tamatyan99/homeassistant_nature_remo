@@ -166,8 +166,19 @@ class NatureRemoAcPresetSelect(CoordinatorEntity[NatureRemoCoordinator], SelectE
         if option == "eco":
             target_temp = 26
         else:
-            appliance = self.coordinator.data.get(self._appliance_id, {})
-            target_temp = appliance.get("settings", {}).get("temp", "25") if appliance else "25"
+            appliance = (
+                self.coordinator.data.get(self._appliance_id, {})
+                if self.coordinator.data
+                else {}
+            )
+            settings = appliance.get("settings") if appliance else None
+            if not settings:
+                if self._attr_current_option == "none":
+                    return
+                raise HomeAssistantError(
+                    "Cannot clear AC preset without current AC settings"
+                )
+            target_temp = settings.get("temp", "25")
 
         prev_option = self._attr_current_option
         payload = _build_ac_preset_payload(

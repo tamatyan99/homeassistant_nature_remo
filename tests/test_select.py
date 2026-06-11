@@ -224,6 +224,34 @@ async def test_select_ac_preset_handles_null_settings(
     assert state.state == "none"
 
 
+async def test_select_ac_preset_none_with_null_settings_is_noop(
+    hass: HomeAssistant, setup_integration, coordinator_data, mock_api
+):
+    """Test that selecting none with null AC settings does not crash."""
+    new_appliances = [dict(a) for a in coordinator_data["appliances"]]
+    for app in new_appliances:
+        if app["id"] == "ac-1":
+            app["settings"] = None
+
+    await setup_integration(
+        devices=coordinator_data["devices"],
+        appliances=new_appliances,
+    )
+
+    mock_api.send_command_climate = AsyncMock(return_value={})
+
+    await hass.services.async_call(
+        "select",
+        "select_option",
+        {ATTR_ENTITY_ID: "select.living_room_preset", ATTR_OPTION: "none"},
+        blocking=True,
+    )
+
+    mock_api.send_command_climate.assert_not_awaited()
+    state = hass.states.get("select.living_room_preset")
+    assert state.state == "none"
+
+
 async def test_select_light_mode_clears_state_when_appliance_removed(
     hass: HomeAssistant, setup_integration, coordinator_data, mock_api
 ):
