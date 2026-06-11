@@ -173,7 +173,7 @@ async def test_select_light_mode_rolls_back_on_api_error(
 
     mock_api.send_light_command = AsyncMock(side_effect=ClientError("boom"))
 
-    with pytest.raises(ClientError):
+    with pytest.raises(HomeAssistantError, match="Command failed"):
         await hass.services.async_call(
             "select",
             "select_option",
@@ -221,4 +221,47 @@ async def test_select_ac_preset_handles_null_settings(
 
     state = hass.states.get("select.living_room_preset")
     assert state is not None
+    assert state.state == "none"
+
+
+async def test_select_light_mode_clears_state_when_appliance_removed(
+    hass: HomeAssistant, setup_integration, coordinator_data, mock_api
+):
+    """Test that light mode select clears options when appliance disappears."""
+    entry = await setup_integration(
+        devices=coordinator_data["devices"],
+        appliances=coordinator_data["appliances"],
+    )
+
+    new_appliances = [a for a in coordinator_data["appliances"] if a["id"] != "light-1"]
+
+    mock_api.get_devices = AsyncMock(return_value=coordinator_data["devices"])
+    mock_api.get_appliances = AsyncMock(return_value=new_appliances)
+
+    await hass.data["nature_remo"][entry.entry_id]["coordinator"].async_refresh()
+    await hass.async_block_till_done()
+
+    state = hass.states.get("select.living_room_mode")
+    assert state.attributes["options"] == []
+    assert state.state == "unknown"
+
+
+async def test_select_ac_preset_clears_state_when_appliance_removed(
+    hass: HomeAssistant, setup_integration, coordinator_data, mock_api
+):
+    """Test that AC preset select resets to none when appliance disappears."""
+    entry = await setup_integration(
+        devices=coordinator_data["devices"],
+        appliances=coordinator_data["appliances"],
+    )
+
+    new_appliances = [a for a in coordinator_data["appliances"] if a["id"] != "ac-1"]
+
+    mock_api.get_devices = AsyncMock(return_value=coordinator_data["devices"])
+    mock_api.get_appliances = AsyncMock(return_value=new_appliances)
+
+    await hass.data["nature_remo"][entry.entry_id]["coordinator"].async_refresh()
+    await hass.async_block_till_done()
+
+    state = hass.states.get("select.living_room_preset")
     assert state.state == "none"

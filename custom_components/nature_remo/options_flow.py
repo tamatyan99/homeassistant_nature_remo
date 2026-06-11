@@ -7,7 +7,12 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
 from homeassistant.helpers.device_registry import async_get as async_get_device_registry
 
-from .const import CONF_LOCAL_IP, DOMAIN
+from .const import (
+    CONF_LOCAL_IP,
+    DEFAULT_MOTION_THRESHOLD_MINUTES,
+    DEFAULT_UPDATE_INTERVAL,
+    DOMAIN,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -19,11 +24,7 @@ class NatureRemoOptionsFlowHandler(config_entries.OptionsFlow):
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
-        # Some HA versions do not accept config_entry in OptionsFlow.__init__.
-        try:
-            super().__init__(config_entry)
-        except TypeError:
-            super().__init__()
+        super().__init__()
         self._config_entry = config_entry
 
     async def async_step_init(self, user_input=None) -> FlowResult:
@@ -36,8 +37,10 @@ class NatureRemoOptionsFlowHandler(config_entries.OptionsFlow):
 
         options = self._config_entry.options
 
-        interval_default = options.get("update_interval", 60)
-        motion_threshold_default = options.get("motion_threshold_minutes", 5)
+        interval_default = options.get("update_interval", DEFAULT_UPDATE_INTERVAL)
+        motion_threshold_default = options.get(
+            "motion_threshold_minutes", DEFAULT_MOTION_THRESHOLD_MINUTES
+        )
         local_ip_default = options.get("local_ip", "")
         data_schema = {
             vol.Optional("update_interval", default=interval_default): vol.In(
@@ -89,7 +92,7 @@ class NatureRemoOptionsFlowHandler(config_entries.OptionsFlow):
             data_schema[
                 vol.Optional(
                     ext_temp_key,
-                    default=options.get(ext_temp_key) or "",
+                    default=options.get(ext_temp_key, ""),
                 )
             ] = selector.EntitySelector(
                 selector.EntitySelectorConfig(
@@ -103,7 +106,7 @@ class NatureRemoOptionsFlowHandler(config_entries.OptionsFlow):
             data_schema[
                 vol.Optional(
                     ext_humidity_key,
-                    default=options.get(ext_humidity_key) or "",
+                    default=options.get(ext_humidity_key, ""),
                 )
             ] = selector.EntitySelector(
                 selector.EntitySelectorConfig(

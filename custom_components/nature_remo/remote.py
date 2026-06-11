@@ -8,7 +8,6 @@ from homeassistant.components.remote import RemoteEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import (
-    ConfigEntryAuthFailed,
     HomeAssistantError,
     ServiceValidationError,
 )
@@ -76,6 +75,8 @@ class NatureRemoRemoteEntity(CoordinatorEntity[NatureRemoCoordinator], RemoteEnt
             self._commands, self._power_on_id, self._power_off_id = build_ir_commands(
                 remote_info
             )
+        else:
+            self._commands, self._power_on_id, self._power_off_id = {}, None, None
         super()._handle_coordinator_update()
 
     @property
@@ -101,8 +102,8 @@ class NatureRemoRemoteEntity(CoordinatorEntity[NatureRemoCoordinator], RemoteEnt
                 await self._api.send_command_signal(signal_id)
             except NatureRemoAuthError as err:
                 _LOGGER.error("Authentication failed: %s", err)
-                raise ConfigEntryAuthFailed(f"Authentication failed: {err}") from err
-            except (ClientError, TimeoutError) as err:
+                raise HomeAssistantError(f"Authentication failed: {err}") from err
+            except ClientError as err:
                 failed.append(cmd)
                 _LOGGER.error("Failed to send command '%s': %s", cmd, err)
         if unknown:
@@ -125,8 +126,8 @@ class NatureRemoRemoteEntity(CoordinatorEntity[NatureRemoCoordinator], RemoteEnt
             except NatureRemoAuthError as err:
                 self._attr_state = previous_state
                 self.async_write_ha_state()
-                raise ConfigEntryAuthFailed(f"Authentication failed: {err}") from err
-            except (ClientError, TimeoutError) as err:
+                raise HomeAssistantError(f"Authentication failed: {err}") from err
+            except ClientError as err:
                 self._attr_state = previous_state
                 self.async_write_ha_state()
                 _LOGGER.error("Failed to send power ON command")
@@ -146,8 +147,8 @@ class NatureRemoRemoteEntity(CoordinatorEntity[NatureRemoCoordinator], RemoteEnt
             except NatureRemoAuthError as err:
                 self._attr_state = previous_state
                 self.async_write_ha_state()
-                raise ConfigEntryAuthFailed(f"Authentication failed: {err}") from err
-            except (ClientError, TimeoutError) as err:
+                raise HomeAssistantError(f"Authentication failed: {err}") from err
+            except ClientError as err:
                 self._attr_state = previous_state
                 self.async_write_ha_state()
                 _LOGGER.error("Failed to send power OFF command")

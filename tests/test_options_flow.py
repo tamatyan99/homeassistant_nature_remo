@@ -64,7 +64,10 @@ def _get_schema_default(schema: vol.Schema, field: str):
 
 def _get_schema_validator(schema: vol.Schema, field: str):
     """Return the validator for a schema field."""
-    return schema.schema[vol.Optional(field)]
+    for marker, validator in schema.schema.items():
+        if getattr(marker, "schema", None) == field:
+            return validator
+    raise KeyError(field)
 
 
 @pytest.fixture

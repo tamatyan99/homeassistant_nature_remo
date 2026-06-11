@@ -520,10 +520,10 @@ async def test_climate_coordinator_update_refreshes_preset_mode_none(
     assert state.attributes["preset_mode"] == PRESET_NONE
 
 
-async def test_climate_set_preset_mode_rolls_back_on_home_assistant_error(
+async def test_climate_set_preset_mode_rejects_invalid_preset(
     hass: HomeAssistant, setup_integration, coordinator_data, mock_api
 ):
-    """Test that HomeAssistantError in set_preset_mode is re-raised and state rolls back."""
+    """Test that invalid preset mode is rejected without changing state."""
     await setup_integration(
         devices=coordinator_data["devices"],
         appliances=coordinator_data["appliances"],
@@ -645,3 +645,116 @@ async def test_climate_set_swing_horizontal_mode_raises_auth_error(
             {ATTR_ENTITY_ID: "climate.living_room", "swing_horizontal_mode": "left"},
             blocking=True,
         )
+
+
+async def test_climate_fan_only_temperature_returns_none(
+    hass: HomeAssistant, setup_integration, coordinator_data, mock_api
+):
+    """Test that FAN_ONLY mode with '-' temp returns None target temperature."""
+    new_appliances = [dict(a) for a in coordinator_data["appliances"]]
+    for app in new_appliances:
+        if app["id"] == "ac-1":
+            app["settings"] = {
+                "mode": "blow",
+                "temp": "-",
+                "vol": "auto",
+                "dir": "auto",
+                "button": "",
+            }
+
+    await setup_integration(
+        devices=coordinator_data["devices"],
+        appliances=new_appliances,
+    )
+
+    state = hass.states.get("climate.living_room")
+    assert state.state == HVACMode.FAN_ONLY
+    assert state.attributes["temperature"] is None
+
+
+async def test_climate_update_from_response_invalid_temp_logs_warning(
+    hass: HomeAssistant, setup_integration, coordinator_data, mock_api, caplog
+):
+    """Test that _update_from_response logs a warning for invalid temp."""
+    from homeassistant.helpers import entity_platform as ep
+
+    await setup_integration(
+        devices=coordinator_data["devices"],
+        appliances=coordinator_data["appliances"],
+    )
+
+    climate_platform = None
+    for platform in ep.async_get_platforms(hass, "nature_remo"):
+        if platform.domain == "climate":
+            climate_platform = platform
+            break
+
+    assert climate_platform is not None
+    entity = list(climate_platform.entities.values())[0]
+
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        entity._update_from_response(
+            {"mode": "cool", "temp": "invalid", "button": ""}
+        )
+
+    assert "Failed to parse temperature from response" in caplog.text
+    assert entity._target_temperature is None
+
+
+async def test_climate_turn_on_fallback_when_cool_unavailable(
+    hass: HomeAssistant, setup_integration, coordinator_data, mock_api
+):
+    """Test turn_on falls back to first available mode when COOL is unavailable."""
+    new_appliances = [dict(a) for a in coordinator_data["appliances"]]
+    for app in new_appliances:
+        if app["id"] == "ac-1":
+            app["aircon"]["range"]["modes"] = {
+                "warm": {
+                    "temp": ["18", "25", "30"],
+                    "vol": ["1", "2", "3", "auto"],
+                    "dir": ["auto"],
+                    "dirh": ["auto", "left"],
+                }
+            }
+            app["settings"] = {
+                "mode": "warm",
+                "temp": "25.0",
+                "vol": "auto",
+                "dir": "auto",
+                "button": "power-off",
+            }
+
+    await setup_integration(
+        devices=coordinator_data["devices"],
+        appliances=new_appliances,
+    )
+
+    mock_api.send_command_climate = AsyncMock(
+        return_value={
+            "mode": "warm",
+            "temp": "25",
+            "vol": "auto",
+            "dir": "auto",
+            "button": "",
+        }
+    )
+
+    await hass.services.async_call(
+        "climate",
+        "turn_on",
+        {ATTR_ENTITY_ID: "climate.living_room"},
+        blocking=True,
+    )
+
+    mock_api.send_command_climate.assert_awaited_once()
+    call_args = mock_api.send_command_climate.await_args
+    assert call_args.args[0] == {
+        "operation_mode": "warm",
+        "temperature": "25",
+        "temperature_unit": "c",
+    }
+
+    state = hass.states.get("climate.living_room")
+    assert state.state == HVACMode.HEAT

@@ -138,6 +138,12 @@ class NatureRemoSensor(CoordinatorEntity[NatureRemoCoordinator], SensorEntity):
         return get_device_info(self._device)
 
     @property
+    def available(self) -> bool:
+        if self._key in ("te", "hu", "il", "pr"):
+            return self._appliance_id in self.coordinator.devices
+        return self._appliance_id in self.coordinator.smart_meters
+
+    @property
     def native_value(self):
         if self._key in ("te", "hu", "il", "pr"):
             device = self.coordinator.devices.get(self._appliance_id)
@@ -179,6 +185,10 @@ class NatureRemoMotionTimeSensor(
     @property
     def device_info(self):
         return get_device_info(self._device)
+
+    @property
+    def available(self) -> bool:
+        return self._device_id in self.coordinator.motion_sensors
 
     @property
     def native_value(self):

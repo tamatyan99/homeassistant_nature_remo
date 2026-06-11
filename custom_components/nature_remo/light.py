@@ -81,6 +81,10 @@ class NatureRemoLight(CoordinatorEntity[NatureRemoCoordinator], LightEntity):
         return self._is_on
 
     @property
+    def effect(self) -> str | None:
+        return self._last_mode if self._is_on else None
+
+    @property
     def extra_state_attributes(self):
         return {"remo_light_mode": self._last_mode}
 

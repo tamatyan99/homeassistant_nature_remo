@@ -10,25 +10,6 @@ from custom_components.nature_remo.api import NatureRemoAPI
 from custom_components.nature_remo.const import DOMAIN
 
 
-def _options_flow_init(self, config_entry):
-    """Stub OptionsFlow.__init__ for test environments without config_entry support."""
-    self.config_entry = config_entry
-
-
-@pytest.fixture(scope="session", autouse=True)
-def _patch_options_flow_init():
-    """Patch OptionsFlow.__init__ so integrations can call super().__init__(entry)."""
-    from homeassistant import config_entries
-
-    original = config_entries.OptionsFlow.__dict__.get("__init__")
-    config_entries.OptionsFlow.__init__ = _options_flow_init
-    yield
-    if original is None:
-        del config_entries.OptionsFlow.__init__
-    else:
-        config_entries.OptionsFlow.__init__ = original
-
-
 @pytest.fixture(autouse=True)
 def auto_enable_custom_integrations(enable_custom_integrations):
     """Enable custom integrations for all tests."""

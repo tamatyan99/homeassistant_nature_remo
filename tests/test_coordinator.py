@@ -260,3 +260,60 @@ class TestNatureRemoCoordinator:
         assert "app-1" in coordinator.smart_meters
         mock_api.parse_smart_meter_properties.assert_called_once_with([])
         assert coordinator.smart_meters["app-1"]["current_power"] == 0
+
+    async def test_device_without_id_is_skipped(self, hass, mock_api, caplog):
+        mock_api.get_devices = AsyncMock(return_value=[{"name": "no-id"}])
+        mock_api.get_appliances = AsyncMock(return_value=[])
+
+        coordinator = NatureRemoCoordinator(hass, mock_api, update_interval=60)
+        result = await coordinator._async_update_data()
+
+        assert "Device without ID skipped" in caplog.text
+        assert coordinator.devices == {}
+        assert result == {}
+
+    async def test_appliance_without_id_is_skipped(self, hass, mock_api, caplog):
+        mock_api.get_devices = AsyncMock(return_value=[])
+        mock_api.get_appliances = AsyncMock(
+            return_value=[{"type": "AC", "nickname": "AC"}]
+        )
+
+        coordinator = NatureRemoCoordinator(hass, mock_api, update_interval=60)
+        result = await coordinator._async_update_data()
+
+        assert "Appliance without ID skipped" in caplog.text
+        assert coordinator.aircons == {}
+        assert result == {}
+
+    async def test_cancelled_error_propagates(self, hass, mock_api):
+        import asyncio
+
+        mock_api.get_devices = AsyncMock(side_effect=asyncio.CancelledError())
+        coordinator = NatureRemoCoordinator(hass, mock_api, 60)
+        with pytest.raises(asyncio.CancelledError):
+            await coordinator._async_update_data()
+
+    async def test_coordinator_null_device_fallback_uses_appliance_id(self, hass, mock_api):
+        mock_api.get_devices = AsyncMock(return_value=[])
+        mock_api.get_appliances = AsyncMock(
+            return_value=[
+                {
+                    "id": "app-1",
+                    "type": "AC",
+                    "nickname": "AC",
+                    "device": {
+                        "name": "Remo",
+                        "firmware_version": "1.0",
+                        "serial_number": "SN001",
+                        "mac_address": "AA:BB:CC:DD:EE:FF",
+                    },
+                }
+            ]
+        )
+
+        coordinator = NatureRemoCoordinator(hass, mock_api, update_interval=60)
+        result = await coordinator._async_update_data()
+
+        assert "app-1" in result
+        assert coordinator.aircons["app-1"]["name"] == "AC"
+        assert coordinator.aircons["app-1"]["device"]["device_id"] == "app-1"

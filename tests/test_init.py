@@ -3,7 +3,8 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from homeassistant.exceptions import ServiceValidationError
+from aiohttp import ClientError
+from homeassistant.exceptions import ConfigEntryNotReady, ServiceValidationError
 from homeassistant.helpers.update_coordinator import ConfigEntryAuthFailed
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -119,6 +120,43 @@ async def test_unload_entry_keeps_coordinator_running_when_platform_unload_fails
     async_unload_platforms.assert_awaited_once_with(entry, PLATFORMS)
     coordinator_mock.async_shutdown.assert_not_awaited()
     assert hass.data[DOMAIN][entry.entry_id]["coordinator"] is coordinator_mock
+
+
+async def test_services_removed_after_last_entry_unloaded(
+    hass, setup_integration, coordinator_data, mock_api
+):
+    """Test that services are removed after the last config entry is unloaded."""
+    entry = await setup_integration(
+        devices=coordinator_data["devices"],
+        appliances=coordinator_data["appliances"],
+    )
+    assert hass.services.has_service(DOMAIN, "send_light_mode") is True
+
+    result = await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert result is True
+    assert hass.services.has_service(DOMAIN, "send_light_mode") is False
+
+
+async def test_setup_entry_not_ready_on_initial_refresh_failure(hass):
+    """Test that ConfigEntryNotReady is raised when first refresh fails."""
+    from homeassistant.config_entries import ConfigEntryState
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"api_key": "test_key"},
+        entry_id="test-entry-not-ready",
+    )
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.nature_remo.coordinator.NatureRemoCoordinator._async_update_data",
+        side_effect=ClientError("connection error"),
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert entry.state is ConfigEntryState.SETUP_RETRY
 
 
 async def test_send_light_mode_service(hass):
@@ -483,5 +521,52 @@ async def test_learn_signal_api_error(hass):
             DOMAIN,
             "learn_signal",
             {"appliance_id": "app-1"},
+            blocking=True,
+        )
+
+
+async def test_init_missing_api_key_raises_not_ready(hass):
+    """Test that async_setup_entry raises ConfigEntryNotReady when api_key is missing."""
+    from custom_components.nature_remo import async_setup_entry
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={},
+        entry_id="test-entry-missing-key",
+    )
+    entry.add_to_hass(hass)
+
+    with pytest.raises(ConfigEntryNotReady, match="API key missing"):
+        await async_setup_entry(hass, entry)
+
+
+async def test_init_send_light_mode_rejects_multiple_entities(hass):
+    """Test send_light_mode raises when multiple entity_ids are provided."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"api_key": "test_key"},
+        entry_id="test-entry-multi-entity",
+    )
+    entry.add_to_hass(hass)
+
+    api_mock = AsyncMock()
+    api_mock.get_devices = AsyncMock(return_value=[])
+    api_mock.get_appliances = AsyncMock(return_value=[])
+
+    with patch(
+        "custom_components.nature_remo.NatureRemoAPI",
+        return_value=api_mock,
+    ), patch(
+        "custom_components.nature_remo.coordinator.NatureRemoCoordinator._async_update_data",
+        return_value={},
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    with pytest.raises(ServiceValidationError, match="Only one entity_id is supported"):
+        await hass.services.async_call(
+            DOMAIN,
+            "send_light_mode",
+            {"entity_id": ["light.one", "light.two"], "mode": "on"},
             blocking=True,
         )

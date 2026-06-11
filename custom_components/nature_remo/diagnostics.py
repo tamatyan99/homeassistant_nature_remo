@@ -50,7 +50,7 @@ async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, config_entry: ConfigEntry
 ) -> dict[str, Any]:
     """Return diagnostics for a config entry."""
-    entry_data = hass.data[DOMAIN].get(config_entry.entry_id, {})
+    entry_data = hass.data.get(DOMAIN, {}).get(config_entry.entry_id, {})
     coordinator = entry_data.get("coordinator")
 
     config_entry_data = dict(config_entry.data)

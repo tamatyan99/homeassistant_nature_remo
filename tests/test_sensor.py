@@ -103,6 +103,30 @@ async def test_sensor_coordinator_update_changes_state(
     assert state.state == "25.0"
 
 
+async def test_sensor_available_when_device_disappears(
+    hass: HomeAssistant, setup_integration, coordinator_data, mock_api
+):
+    """Test sensor availability when the source device is removed from coordinator."""
+    entry = await setup_integration(
+        devices=coordinator_data["devices"],
+        appliances=coordinator_data["appliances"],
+    )
+
+    assert hass.states.get("sensor.living_room_temperature").state == "22.5"
+
+    mock_api.get_devices = AsyncMock(return_value=[])
+    mock_api.get_appliances = AsyncMock(return_value=coordinator_data["appliances"])
+
+    await hass.data["nature_remo"][entry.entry_id]["coordinator"].async_refresh()
+    await hass.async_block_till_done()
+
+    state = hass.states.get("sensor.living_room_temperature")
+    assert state.state == "unavailable"
+
+    motion_state = hass.states.get("sensor.bedroom_sensor_last_motion")
+    assert motion_state.state == "unavailable"
+
+
 async def test_sensor_smart_meter_values(
     hass: HomeAssistant, setup_integration, coordinator_data, mock_api
 ):

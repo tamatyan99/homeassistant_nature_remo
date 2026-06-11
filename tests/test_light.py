@@ -47,6 +47,28 @@ async def test_light_entity_properties(
     assert LightEntityFeature.EFFECT in state.attributes["supported_features"]
     assert state.attributes["effect_list"] == ["on", "off", "night"]
     assert state.attributes["remo_light_mode"] == "on"
+    assert state.attributes["effect"] == "on"
+
+
+async def test_light_effect_property_when_off(
+    hass: HomeAssistant, setup_integration, coordinator_data, mock_api
+):
+    """Test light effect property returns None when off."""
+    await setup_integration(
+        devices=coordinator_data["devices"],
+        appliances=coordinator_data["appliances"],
+    )
+
+    await hass.services.async_call(
+        "light",
+        "turn_off",
+        {ATTR_ENTITY_ID: "light.living_room"},
+        blocking=True,
+    )
+
+    state = hass.states.get("light.living_room")
+    assert state.state == "off"
+    assert state.attributes["effect"] is None
 
 
 async def test_light_coordinator_update_changes_state(

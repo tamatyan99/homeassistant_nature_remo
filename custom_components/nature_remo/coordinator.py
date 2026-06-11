@@ -119,7 +119,7 @@ class NatureRemoCoordinator(DataUpdateCoordinator):
                 device_raw = appliance.get("device") or {}
                 device_info = {
                     "name": device_raw.get("name", "No Name"),
-                    "device_id": device_raw.get("id", ""),
+                    "device_id": device_raw.get("id") or appliance_id,
                     "firmware_version": device_raw.get(
                         "firmware_version", ""
                     ),

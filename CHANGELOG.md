@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.8] - 2026-06-10
+
+### Fixed
+- **API robustness** (`api.py`):
+  - Fixed `SyntaxError` caused by `nonlocal` declarations inside conditional blocks in `_call_api`.
+  - JSON decode errors (`ClientError` with invalid JSON responses) are now correctly marked `retryable = False` and are not retried.
+  - Rate-limit retry delay is now capped at 30 seconds even when the API returns a very large `Retry-After` value.
+  - Server error retry (502/503/504) now uses correct exponential backoff (`2 ** attempt`).
+- **Climate** (`climate.py`):
+  - Eliminated duplicated try/except/rollback logic in `async_set_preset_mode` by refactoring to use `_apply_climate_command` with a `post_success` callback.
+  - Extracted module-level `_format_temperature` helper for consistent temperature formatting across all climate operations.
+  - `async_apply_ac_preset` refactored into synchronous `_build_ac_preset_payload` to simplify control flow.
+- **Select** (`select.py`):
+  - Updated to import `_build_ac_preset_payload` and `_format_temperature` from `climate.py`; `async_select_option` now builds payload locally and sends via API directly.
+
+### Tests
+- Added `test_server_error_retry_then_success` (parametrized for 502/503/504).
+- Added `test_json_decode_error_not_retried`.
+- Added `test_rate_limit_cap_retry_after`.
+- Added `test_climate_fan_only_temperature_returns_none`.
+- Added `test_climate_update_from_response_invalid_temp_logs_warning`.
+- Added `test_climate_turn_on_fallback_when_cool_unavailable`.
+- Added parametrized `test_parse_smart_meter_properties_with_conversion` covering coefficient × unit-table conversions.
+- Fixed `test_remote_clears_commands_when_remote_removed` to account for Home Assistant stripping `extra_state_attributes` when entity is unavailable.
+
 ## [0.6.7] - 2026-06-10
 
 ### Fixed

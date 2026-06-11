@@ -39,6 +39,12 @@ async def test_diagnostics_returns_masked_data(
     assert aircons["ac-1"]["appliance_id"] == "***"
     assert aircons["ac-1"]["name"] == "***"
 
+    # Check nested device fields inside appliances are also masked
+    assert aircons["ac-1"]["device"]["name"] == "***"
+    assert aircons["ac-1"]["device"]["device_id"] == "***"
+    assert aircons["ac-1"]["device"]["serial_number"] == "***"
+    assert aircons["ac-1"]["device"]["mac_address"] == "***"
+
 
 async def test_diagnostics_no_coordinator(hass):
     """Test diagnostics handles missing coordinator gracefully."""
@@ -75,3 +81,21 @@ async def test_diagnostics_redacts_local_ip(hass):
     diagnostics = await async_get_config_entry_diagnostics(hass, entry)
 
     assert diagnostics["options"][CONF_LOCAL_IP] == "***"
+
+
+async def test_diagnostics_safe_when_domain_data_missing(hass):
+    """Test diagnostics works when hass.data[DOMAIN] is absent."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"api_key": "test_key"},
+        entry_id="diag-missing-domain",
+    )
+    entry.add_to_hass(hass)
+
+    hass.data.pop(DOMAIN, None)
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+
+    assert "config_entry" in diagnostics
+    assert diagnostics["config_entry"]["api_key"] == "***"
+    assert "devices" not in diagnostics

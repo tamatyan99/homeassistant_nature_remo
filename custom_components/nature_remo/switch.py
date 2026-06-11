@@ -7,7 +7,7 @@ from aiohttp import ClientError
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -75,6 +75,8 @@ class NatureRemoSwitchEntity(CoordinatorEntity[NatureRemoCoordinator], SwitchEnt
             self._commands, self._power_on_id, self._power_off_id = build_ir_commands(
                 remote_info
             )
+        else:
+            self._commands, self._power_on_id, self._power_off_id = {}, None, None
         super()._handle_coordinator_update()
 
     @property
@@ -95,8 +97,8 @@ class NatureRemoSwitchEntity(CoordinatorEntity[NatureRemoCoordinator], SwitchEnt
             except NatureRemoAuthError as err:
                 self._is_on = previous_is_on
                 self.async_write_ha_state()
-                raise ConfigEntryAuthFailed(f"Authentication failed: {err}") from err
-            except (ClientError, TimeoutError) as err:
+                raise HomeAssistantError(f"Authentication failed: {err}") from err
+            except ClientError as err:
                 self._is_on = previous_is_on
                 self.async_write_ha_state()
                 _LOGGER.error("Failed to send power ON command")
@@ -118,8 +120,8 @@ class NatureRemoSwitchEntity(CoordinatorEntity[NatureRemoCoordinator], SwitchEnt
             except NatureRemoAuthError as err:
                 self._is_on = previous_is_on
                 self.async_write_ha_state()
-                raise ConfigEntryAuthFailed(f"Authentication failed: {err}") from err
-            except (ClientError, TimeoutError) as err:
+                raise HomeAssistantError(f"Authentication failed: {err}") from err
+            except ClientError as err:
                 self._is_on = previous_is_on
                 self.async_write_ha_state()
                 _LOGGER.error("Failed to send power OFF command")

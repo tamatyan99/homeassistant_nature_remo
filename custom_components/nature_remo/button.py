@@ -7,7 +7,7 @@ from aiohttp import ClientError
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -79,8 +79,8 @@ class NatureRemoLearnSignalButton(CoordinatorEntity[NatureRemoCoordinator], Butt
         try:
             await self._api.learn_signal(self._appliance_id)
         except NatureRemoAuthError as err:
-            raise ConfigEntryAuthFailed(f"Authentication failed: {err}") from err
-        except (ClientError, TimeoutError) as err:
+            raise HomeAssistantError(f"Authentication failed: {err}") from err
+        except ClientError as err:
             _LOGGER.error("Failed to learn signal for %s: %s", self._appliance_id, err)
             raise HomeAssistantError(
                 f"Learn signal failed for {self.name}"

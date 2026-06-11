@@ -6,12 +6,12 @@ from homeassistant.components.climate import HVACMode
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api import NatureRemoAuthError
-from .climate import async_apply_ac_preset
+from .climate import _build_ac_preset_payload, _format_temperature
 from .const import DOMAIN, REMO_MODE_TO_HA_MODE
 from .coordinator import NatureRemoCoordinator
 from .entity import get_device_info
@@ -91,6 +91,9 @@ class NatureRemoLightSelect(CoordinatorEntity[NatureRemoCoordinator], SelectEnti
             self._attr_options = [btn["name"] for btn in effect_buttons]
             state = light_data.get("state", {})
             self._attr_current_option = state.get("last_button")
+        else:
+            self._attr_options = []
+            self._attr_current_option = None
         self.async_write_ha_state()
 
     async def async_select_option(self, option: str) -> None:
@@ -104,11 +107,11 @@ class NatureRemoLightSelect(CoordinatorEntity[NatureRemoCoordinator], SelectEnti
         except NatureRemoAuthError as err:
             self._attr_current_option = prev_option
             self.async_write_ha_state()
-            raise ConfigEntryAuthFailed(f"Authentication failed: {err}") from err
-        except (ClientError, TimeoutError):
+            raise HomeAssistantError(f"Authentication failed: {err}") from err
+        except ClientError as err:
             self._attr_current_option = prev_option
             self.async_write_ha_state()
-            raise
+            raise HomeAssistantError(f"Command failed: {err}") from err
         self.async_write_ha_state()
 
 
@@ -152,6 +155,8 @@ class NatureRemoAcPresetSelect(CoordinatorEntity[NatureRemoCoordinator], SelectE
             if ha_mode_str is not None:
                 with contextlib.suppress(ValueError):
                     self._hvac_mode = HVACMode(ha_mode_str)
+        else:
+            self._attr_current_option = "none"
         self.async_write_ha_state()
 
     async def async_select_option(self, option: str) -> None:
@@ -165,21 +170,20 @@ class NatureRemoAcPresetSelect(CoordinatorEntity[NatureRemoCoordinator], SelectE
             target_temp = appliance.get("settings", {}).get("temp", "25") if appliance else "25"
 
         prev_option = self._attr_current_option
+        payload = _build_ac_preset_payload(
+            option,
+            self._hvac_mode,
+            _format_temperature(target_temp),
+        )
         try:
-            await async_apply_ac_preset(
-                self._api,
-                self._appliance_id,
-                option,
-                self._hvac_mode,
-                target_temp,
-            )
+            await self._api.send_command_climate(payload, self._appliance_id)
             self._attr_current_option = option
         except NatureRemoAuthError as err:
             self._attr_current_option = prev_option
             self.async_write_ha_state()
-            raise ConfigEntryAuthFailed(f"Authentication failed: {err}") from err
-        except (ClientError, TimeoutError):
+            raise HomeAssistantError(f"Authentication failed: {err}") from err
+        except ClientError as err:
             self._attr_current_option = prev_option
             self.async_write_ha_state()
-            raise
+            raise HomeAssistantError(f"Command failed: {err}") from err
         self.async_write_ha_state()

@@ -1,6 +1,7 @@
 import asyncio
 import logging
 
+from aiohttp import ClientError
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import (
@@ -25,7 +26,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
 
     local_ip = entry.options.get(CONF_LOCAL_IP, "")
-    api = NatureRemoAPI(hass, entry.data["api_key"], local_ip=local_ip if local_ip else None)
+    api_key = entry.data.get("api_key")
+    if not api_key:
+        raise ConfigEntryNotReady("API key missing")
+    api = NatureRemoAPI(hass, api_key, local_ip=local_ip if local_ip else None)
 
     # Respect Nature Cloud API rate limit: 30 requests / 5 min.
     # Each refresh issues 2 requests (devices + appliances), so 30 s is the safe floor.
@@ -78,6 +82,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             entity_ids = [entity_ids]
         if not entity_ids:
             raise ServiceValidationError("entity_id is required")
+        if len(entity_ids) > 1:
+            raise ServiceValidationError("Only one entity_id is supported")
         entity_id = entity_ids[0]
         mode = call.data.get("mode", "on")
 
@@ -106,6 +112,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             raise HomeAssistantError(f"Authentication failed: {err}") from err
         except asyncio.CancelledError:
             raise
+        except (ClientError, TimeoutError) as err:
+            raise HomeAssistantError(f"Light command failed: {err}") from err
         except Exception as err:
             raise HomeAssistantError(f"Light command failed: {err}") from err
         light_entity.set_mode(mode)
@@ -143,6 +151,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             raise HomeAssistantError(f"Authentication failed: {err}") from err
         except asyncio.CancelledError:
             raise
+        except (ClientError, TimeoutError) as err:
+            raise HomeAssistantError(f"Signal learn failed: {err}") from err
         except Exception as err:
             raise HomeAssistantError(f"Signal learn failed: {err}") from err
 

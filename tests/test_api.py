@@ -284,3 +284,74 @@ class TestNatureRemoAPI:
         result = api.parse_smart_meter_properties(properties)
         assert result["instant_power"] == 500
         assert result["buy_power"] == 0.0
+
+    @pytest.mark.parametrize("status", [502, 503, 504])
+    async def test_server_error_retry_then_success(self, api, status):
+        resp_err = _mock_response(status=status)
+        resp_ok = _mock_response(status=200, json_data={"status": "ok"})
+        responses = [resp_err, resp_ok]
+
+        api._session.request = MagicMock(
+            side_effect=lambda *a, **k: _mock_context_manager(responses.pop(0))
+        )
+        result = await api._get("/devices")
+        assert result == {"status": "ok"}
+        assert api._session.request.call_count == 2
+
+    async def test_json_decode_error_not_retried(self, api):
+        mock_resp = _mock_response(status=200, text="not valid json")
+        api._session.request = _mock_session_method(mock_resp)
+        with pytest.raises(ClientError, match="Invalid JSON response"):
+            await api._get("/devices")
+        assert api._session.request.call_count == 1
+
+    async def test_rate_limit_cap_retry_after(self, api):
+        resp_429 = _mock_response(status=429)
+        resp_429.headers = {"Retry-After": "300"}
+        resp_200 = _mock_response(status=200, json_data=[{"id": "dev-1"}])
+        responses = [resp_429, resp_200]
+
+        api._session.request = MagicMock(
+            side_effect=lambda *a, **k: _mock_context_manager(responses.pop(0))
+        )
+        with patch("custom_components.nature_remo.api.asyncio.sleep") as mock_sleep:
+            result = await api._get("/devices")
+        assert result == [{"id": "dev-1"}]
+        assert api._session.request.call_count == 2
+        mock_sleep.assert_called_once_with(30)
+
+    @pytest.mark.parametrize(
+        ("coefficient", "unit", "buy_raw", "sold_raw", "expected_buy", "expected_sold"),
+        [
+            (1, 0x00, 100, 50, 100.0, 50.0),
+            (10, 0x01, 100, 50, 100.0, 50.0),
+            (1, 0x02, 100, 50, 1.0, 0.5),
+            (1, 0x0A, 10, 5, 100.0, 50.0),
+            (2, 0x0B, 5, 2, 1000.0, 400.0),
+            (1, 0x0C, 1, 0, 1000.0, 0.0),
+            (1, 0x0D, 1, 1, 10000.0, 10000.0),
+            (1, 0x03, 1000, 500, 1.0, 0.5),
+            (1, 0x04, 10000, 5000, 1.0, 0.5),
+        ],
+    )
+    async def test_parse_smart_meter_properties_with_conversion(
+        self,
+        api,
+        coefficient,
+        unit,
+        buy_raw,
+        sold_raw,
+        expected_buy,
+        expected_sold,
+    ):
+        properties = [
+            {"epc": 211, "val": str(coefficient)},
+            {"epc": 225, "val": str(unit)},
+            {"epc": 224, "val": str(buy_raw)},
+            {"epc": 227, "val": str(sold_raw)},
+            {"epc": 231, "val": "12345"},
+        ]
+        result = api.parse_smart_meter_properties(properties)
+        assert result["buy_power"] == expected_buy
+        assert result["sold_power"] == expected_sold
+        assert result["instant_power"] == 12345

@@ -143,6 +143,29 @@ async def test_switch_turn_on_without_power_command_raises(
         )
 
 
+async def test_switch_turn_off_without_power_command_raises(
+    hass: HomeAssistant, setup_integration, coordinator_data, mock_api
+):
+    """Test turn_off raises when no off command is available."""
+    new_appliances = [dict(a) for a in coordinator_data["appliances"]]
+    for app in new_appliances:
+        if app["id"] == "remote-1":
+            app["signals"] = [{"id": "sig-on", "name": "on"}]
+
+    await setup_integration(
+        devices=coordinator_data["devices"],
+        appliances=new_appliances,
+    )
+
+    with pytest.raises(HomeAssistantError, match="Power OFF command not available"):
+        await hass.services.async_call(
+            "switch",
+            "turn_off",
+            {ATTR_ENTITY_ID: "switch.living_room"},
+            blocking=True,
+        )
+
+
 async def test_switch_turn_on_rolls_back_on_api_error(
     hass: HomeAssistant, setup_integration, coordinator_data, mock_api
 ):
@@ -169,7 +192,7 @@ async def test_switch_turn_on_rolls_back_on_api_error(
 async def test_switch_turn_on_propagates_auth_error(
     hass: HomeAssistant, setup_integration, coordinator_data, mock_api
 ):
-    """Test turn_on propagates NatureRemoAuthError as ConfigEntryAuthFailed."""
+    """Test turn_on propagates NatureRemoAuthError as HomeAssistantError."""
     await setup_integration(
         devices=coordinator_data["devices"],
         appliances=coordinator_data["appliances"],
@@ -189,3 +212,24 @@ async def test_switch_turn_on_propagates_auth_error(
 
     state = hass.states.get("switch.living_room")
     assert state.state == "off"
+
+
+async def test_switch_clears_commands_when_remote_removed(
+    hass: HomeAssistant, setup_integration, coordinator_data, mock_api
+):
+    """Test that switch clears commands and becomes unavailable when remote disappears."""
+    entry = await setup_integration(
+        devices=coordinator_data["devices"],
+        appliances=coordinator_data["appliances"],
+    )
+
+    new_appliances = [a for a in coordinator_data["appliances"] if a["id"] != "remote-1"]
+
+    mock_api.get_devices = AsyncMock(return_value=coordinator_data["devices"])
+    mock_api.get_appliances = AsyncMock(return_value=new_appliances)
+
+    await hass.data["nature_remo"][entry.entry_id]["coordinator"].async_refresh()
+    await hass.async_block_till_done()
+
+    state = hass.states.get("switch.living_room")
+    assert state.state == "unavailable"

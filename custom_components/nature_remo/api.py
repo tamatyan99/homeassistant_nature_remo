@@ -27,7 +27,7 @@ class NatureRemoAPI:
         self._local_ip = local_ip
         self._cloud_headers = {
             "Authorization": f"Bearer {token}",
-            "User-Agent": "HomeAssistant-NatureRemo/0.6.7",
+            "User-Agent": "HomeAssistant-NatureRemo/0.6.8",
         }
         self._local_headers = {"X-Requested-With": "homeassistant"}
         self._cloud_request_lock = asyncio.Lock()
@@ -87,7 +87,9 @@ class NatureRemoAPI:
             data_resp = json.loads(text)
         except json.JSONDecodeError as err:
             _LOGGER.error("Invalid JSON response: %s", text[:500])
-            raise ClientError(f"Invalid JSON response: {err}") from err
+            exc = ClientError(f"Invalid JSON response: {err}")
+            exc.retryable = False
+            raise exc from err
         if not isinstance(data_resp, (list, dict)):
             _LOGGER.error(
                 "Unexpected response type from API: %s (expected list or dict)",
@@ -142,7 +144,7 @@ class NatureRemoAPI:
                         if response.status == 429:
                             _LOGGER.warning("API rate limit hit (429)")
                             if method == "GET" and attempt < max_retries:
-                                retry_delay = self._rate_limit_delay(response)
+                                retry_delay = min(self._rate_limit_delay(response), 30)
                                 _LOGGER.warning(
                                     "Rate limited. Retrying in %d seconds...", retry_delay
                                 )

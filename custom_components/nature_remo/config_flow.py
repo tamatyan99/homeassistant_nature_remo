@@ -30,6 +30,7 @@ class NatureRemoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         self.api_key: str = ""
+        self.name: str = ""
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -112,7 +113,9 @@ class NatureRemoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="reauth",
-            data_schema=vol.Schema({vol.Required("api_key"): str}),
+            data_schema=vol.Schema(
+                {vol.Required("api_key"): vol.All(str, vol.Length(min=1))}
+            ),
             errors=errors,
         )
 
