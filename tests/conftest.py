@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from custom_components.nature_remo.api import NatureRemoAPI
-from custom_components.nature_remo.const import DOMAIN
 
 
 @pytest.fixture

@@ -1,12 +1,10 @@
-from datetime import timedelta, datetime
 import logging
+from datetime import datetime, timedelta
 
 from aiohttp import ClientError
-
-from homeassistant.core import HomeAssistant
 from homeassistant.components.light import LightEntity
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-
 
 _LOGGER = logging.getLogger(__name__)
 

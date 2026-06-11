@@ -1,4 +1,5 @@
 import logging
+
 import voluptuous as vol
 from homeassistant.components.climate import (
     ClimateEntity,
@@ -11,8 +12,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
-from .coordinator import NatureRemoCoordinator
+
 from .const import DOMAIN
+from .coordinator import NatureRemoCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -360,21 +362,19 @@ class NatureRemoClimate(ClimateEntity):
         else:
             device_events = device_data.get("events", {})
             # 外部温度センサー未設定の場合のみNature Remoの値を使用
-            if external_temperature is None:
-                if "te" in device_events:
-                    self._temperature = device_events["te"].get("val")
-                    _LOGGER.debug(
-                        f"[{self._attr_name}] Nature Remoデバイスから室温を取得: {self._temperature}℃"
-                        f" / Using Nature Remo device temperature: {self._temperature}℃"
-                    )
+            if external_temperature is None and "te" in device_events:
+                self._temperature = device_events["te"].get("val")
+                _LOGGER.debug(
+                    f"[{self._attr_name}] Nature Remoデバイスから室温を取得: {self._temperature}℃"
+                    f" / Using Nature Remo device temperature: {self._temperature}℃"
+                )
             # 外部湿度センサー未設定の場合のみNature Remoの値を使用
-            if external_humidity is None:
-                if "hu" in device_events:
-                    self._humidity = device_events["hu"].get("val")
-                    _LOGGER.debug(
-                        f"[{self._attr_name}] Nature Remoデバイスから湿度を取得: {self._humidity}%"
-                        f" / Using Nature Remo device humidity: {self._humidity}%"
-                    )
+            if external_humidity is None and "hu" in device_events:
+                self._humidity = device_events["hu"].get("val")
+                _LOGGER.debug(
+                    f"[{self._attr_name}] Nature Remoデバイスから湿度を取得: {self._humidity}%"
+                    f" / Using Nature Remo device humidity: {self._humidity}%"
+                )
 
         # settingsから取得できる情報
         if appliance and "settings" in appliance:
@@ -529,10 +529,11 @@ class NatureRemoClimate(ClimateEntity):
         response = await self._api.send_command_climate(payload, self._appliance_id)
         _LOGGER.info("Set HVACMode: %s", response)
         self._hvac_mode = self.get_remo_mode_to_hvac_mode(response.get("mode", ""))
-        if self._hvac_mode is HVACMode.FAN_ONLY:
-            temp = "0.0"
-        else:
-            temp = response.get("temp", "25.0")
+        temp = (
+            "0.0"
+            if self._hvac_mode is HVACMode.FAN_ONLY
+            else response.get("temp", "25.0")
+        )
         self._target_temperature = float(temp)
         self._fan_mode = response.get("vol", "auto")
         self._swing_mode = response.get("dir", "auto")

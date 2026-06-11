@@ -1,13 +1,15 @@
 import logging
+
 import voluptuous as vol
-from homeassistant.components.light import LightEntity, ColorMode
+from homeassistant.components.light import ColorMode, LightEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from .coordinator import NatureRemoCoordinator
+
 from .const import DOMAIN
+from .coordinator import NatureRemoCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 

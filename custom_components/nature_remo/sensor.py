@@ -1,10 +1,11 @@
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
+
+from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from homeassistant.components.binary_sensor import BinarySensorEntity
-from .coordinator import NatureRemoCoordinator
-from .const import DOMAIN
 
+from .const import DOMAIN
+from .coordinator import NatureRemoCoordinator
 
 SENSOR_TYPES = {
     "te": {
@@ -260,6 +261,6 @@ class NatureRemoMotionBinarySensor(CoordinatorEntity, BinarySensorEntity):
         """
         motion = self.coordinator.motion_sensors.get(self._device_id)
         if motion and "last_motion" in motion:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             return (now - motion["last_motion"]) < timedelta(minutes=5)
         return False

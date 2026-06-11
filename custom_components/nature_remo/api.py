@@ -1,7 +1,7 @@
 import logging
-import aiohttp
-
 from datetime import datetime
+
+import aiohttp
 
 _LOGGER = logging.getLogger(__name__)
 NATURE_REMO_URL = "https://api.nature.global/1"
@@ -238,9 +238,11 @@ class NatureRemoAPI:
         api_url = f"{NATURE_REMO_URL}/signals/{signal_id}/send"
         headers = {"Authorization": f"Bearer {self._token}"}
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(api_url, headers=headers) as response:
-                if response.status != 200:
-                    text = await response.text()
-                    _LOGGER.error("Failed to send signal %s: %s", signal_id, text)
-                    response.raise_for_status()
+        async with (
+            aiohttp.ClientSession() as session,
+            session.post(api_url, headers=headers) as response,
+        ):
+            if response.status != 200:
+                text = await response.text()
+                _LOGGER.error("Failed to send signal %s: %s", signal_id, text)
+                response.raise_for_status()
