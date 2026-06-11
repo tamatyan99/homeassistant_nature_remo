@@ -1,16 +1,16 @@
 {
   "domain": "nature_remo",
   "name": "Nature Remo",
-  "version": "0.3.0",
-  "config_flow": true,
-  "dependencies": [],
-  "requirements": [],
   "codeowners": [
     "@nanosns",
     "@tamatyan99"
   ],
-  "iot_class": "cloud_polling",
+  "config_flow": true,
+  "dependencies": [],
   "documentation": "https://github.com/tamatyan99/homeassistant_nature_remo#readme",
+  "integration_type": "hub",
+  "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/tamatyan99/homeassistant_nature_remo/issues",
-  "integration_type": "hub"
+  "requirements": [],
+  "version": "0.3.0"
 }
