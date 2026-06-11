@@ -232,6 +232,39 @@ class TestNatureRemoAPI:
             await api._call_api("POST", "/signals/sig-1/send")
         assert api._session.request.call_count == 1
 
+    @pytest.mark.parametrize("status", [502, 503, 504])
+    async def test_call_api_does_not_retry_server_error_for_post(self, api, status):
+        resp_err = _mock_response(status=status, text="Gateway error")
+        api._session.request = _mock_session_method(resp_err)
+
+        with pytest.raises(ClientError, match=f"status {status}"):
+            await api._call_api("POST", "/signals/sig-1/send")
+
+        assert api._session.request.call_count == 1
+
+    async def test_call_api_does_not_retry_timeout_for_post(self, api):
+        class TimeoutCtx:
+            async def __aenter__(self):
+                raise TimeoutError()
+
+            async def __aexit__(self, *args):
+                return False
+
+        api._session.request = MagicMock(return_value=TimeoutCtx())
+
+        with pytest.raises(TimeoutError):
+            await api._call_api("POST", "/signals/sig-1/send")
+
+        assert api._session.request.call_count == 1
+
+    async def test_call_api_does_not_retry_transport_error_for_post(self, api):
+        api._session.request = MagicMock(side_effect=ClientError("connection reset"))
+
+        with pytest.raises(ClientError, match="connection reset"):
+            await api._call_api("POST", "/signals/sig-1/send")
+
+        assert api._session.request.call_count == 1
+
     async def test_send_light_command_failure(self, api):
         mock_resp = _mock_response(status=500, text="Internal Server Error")
         api._session.request = _mock_session_method(mock_resp)

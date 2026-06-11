@@ -121,6 +121,7 @@ class NatureRemoAPI:
         retry_delay: int | None = None
 
         for attempt in range(max_retries + 1):
+            can_retry = method == "GET" and attempt < max_retries
             async with lock_ctx:
                 try:
                     async with self._session.request(
@@ -143,7 +144,7 @@ class NatureRemoAPI:
 
                         if response.status == 429:
                             _LOGGER.warning("API rate limit hit (429)")
-                            if method == "GET" and attempt < max_retries:
+                            if can_retry:
                                 retry_delay = min(self._rate_limit_delay(response), 30)
                                 _LOGGER.warning(
                                     "Rate limited. Retrying in %d seconds...", retry_delay
@@ -160,7 +161,7 @@ class NatureRemoAPI:
                         elif response.ok:
                             return await self._parse_json_response(response)
 
-                        elif response.status in {502, 503, 504} and attempt < max_retries:
+                        elif response.status in {502, 503, 504} and can_retry:
                             retry_delay = min(2 ** attempt, 30)
                             _LOGGER.warning(
                                 "Server error %s. Retrying in %d seconds...",
@@ -180,7 +181,7 @@ class NatureRemoAPI:
                 except NatureRemoAuthError:
                     raise
                 except TimeoutError:
-                    if attempt < max_retries:
+                    if can_retry:
                         retry_delay = 2 ** attempt
                         _LOGGER.warning("Request timed out. Retrying in %d seconds...", retry_delay)
                     else:
@@ -188,7 +189,7 @@ class NatureRemoAPI:
                 except ClientError as err:
                     # Retry transport-level errors and explicitly retryable HTTP statuses.
                     # Application-level errors raised above are marked non-retryable.
-                    if getattr(err, "retryable", True) and attempt < max_retries:
+                    if getattr(err, "retryable", True) and can_retry:
                         retry_delay = min(2 ** attempt, 30)
                         _LOGGER.warning(
                             "Request failed (%s). Retrying in %d seconds...", err, retry_delay
