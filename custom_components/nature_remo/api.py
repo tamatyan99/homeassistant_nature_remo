@@ -39,11 +39,19 @@ class NatureRemoAPI:
             rate_remaining = response.headers.get("X-Rate-Limit-Remaining")
             rate_reset = response.headers.get("X-Rate-Limit-Reset")
             # rate_resetを読める時間に変換する
-            reset_time = datetime.fromtimestamp(int(rate_reset))
+            reset_time = None
+            if rate_reset:
+                try:
+                    reset_time = datetime.fromtimestamp(int(rate_reset))
+                except (ValueError, TypeError, OSError):
+                    reset_time = None
 
             # デバッグログにリクエスト情報を出力する
             _LOGGER.debug(
-                f"NatureRemo RateLimit → Limit: {rate_limit}, Remaining: {rate_remaining}, Reset: {reset_time}"
+                "NatureRemo RateLimit → Limit: %s, Remaining: %s, Reset: %s",
+                rate_limit,
+                rate_remaining,
+                reset_time,
             )
 
             if response.status == 200:
@@ -82,13 +90,20 @@ class NatureRemoAPI:
             # レート制限系のヘッダを取得・ログ出力
             rate_limit = response.headers.get("X-Rate-Limit-Limit")
             rate_remaining = response.headers.get("X-Rate-Limit-Remaining")
-            rate_reset = datetime.fromtimestamp(
-                int(response.headers.get("X-Rate-Limit-Reset"))
-            )
+            rate_reset = response.headers.get("X-Rate-Limit-Reset")
+            reset_time = None
+            if rate_reset:
+                try:
+                    reset_time = datetime.fromtimestamp(int(rate_reset))
+                except (ValueError, TypeError, OSError):
+                    reset_time = None
 
             # デバッグログにリクエスト情報を出力
             _LOGGER.debug(
-                f"NatureRemo RateLimit → Limit: {rate_limit}, Remaining: {rate_remaining}, Reset: {rate_reset}"
+                "NatureRemo RateLimit → Limit: %s, Remaining: %s, Reset: %s",
+                rate_limit,
+                rate_remaining,
+                reset_time,
             )
 
             response_json = await response.json()
@@ -109,7 +124,7 @@ class NatureRemoAPI:
         Nature Remo LightのON/OFFを送信.
         Send ON/OFF commands to Nature Remo Light.
         """
-        _LOGGER.info(f"Send Light applicance_id:{appliance_id} command:{command}")
+        _LOGGER.info("Send Light applicance_id:%s command:%s", appliance_id, command)
         url = f"{NATURE_REMO_URL}/appliances/{appliance_id}/light"
 
         headers = {"Authorization": f"Bearer {self._token}"}
@@ -122,13 +137,20 @@ class NatureRemoAPI:
             # レート制限系のヘッダを取得・ログ出力！
             rate_limit = response.headers.get("X-Rate-Limit-Limit")
             rate_remaining = response.headers.get("X-Rate-Limit-Remaining")
-            rate_reset = datetime.fromtimestamp(
-                int(response.headers.get("X-Rate-Limit-Reset"))
-            )
+            rate_reset = response.headers.get("X-Rate-Limit-Reset")
+            reset_time = None
+            if rate_reset:
+                try:
+                    reset_time = datetime.fromtimestamp(int(rate_reset))
+                except (ValueError, TypeError, OSError):
+                    reset_time = None
 
             # デバッグログにリクエスト情報を出力
             _LOGGER.debug(
-                f"NatureRemo RateLimit → Limit: {rate_limit}, Remaining: {rate_remaining}, Reset: {rate_reset}"
+                "NatureRemo RateLimit → Limit: %s, Remaining: %s, Reset: %s",
+                rate_limit,
+                rate_remaining,
+                reset_time,
             )
 
             response_json = await response.json()
@@ -137,7 +159,7 @@ class NatureRemoAPI:
             else:
                 error_text = await response.text()
                 _LOGGER.error(
-                    f"Nature Remo API Error: {response.status} - {error_text}"
+                    "Nature Remo API Error: %s - %s", response.status, error_text
                 )
             return response_json
 
@@ -153,13 +175,21 @@ class NatureRemoAPI:
         sold_power_raw = 0
         instant_power = 0
 
-        for prop in properties:
-            epc = int(prop.get("epc"))
-            val_str = prop.get("val", "0")
+        def _parse_int(value: str) -> int:
+            """Parse int value supporting hex strings."""
             try:
-                val = int(val_str)
-            except ValueError:
-                val = 0
+                if isinstance(value, str) and value.lower().startswith("0x"):
+                    return int(value, 16)
+                return int(value)
+            except (ValueError, TypeError):
+                return 0
+
+        for prop in properties:
+            epc = _parse_int(str(prop.get("epc", "0")))
+            val_str = prop.get("val", "0")
+            val = _parse_int(val_str)
+
+            # epc（Echonet Lite Property）に応じて各値を格納
 
             # epc（Echonet Lite Property）に応じて各値を格納
             if epc == 211:  # 係数
